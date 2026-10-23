@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CheckInExtraction",
+  "description": "Structured fields Bedrock extracts from one resident's spoken answers. Triage is decided by rules, not by this output.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["is_safe", "device_has_power", "battery_hours", "needs", "distress_signals", "language_detected", "confidence"],
+  "properties": {
+    "is_safe": { "enum": ["yes", "no", "unsure"] },
+    "device_has_power": { "enum": ["yes", "no", "on_battery", "no_device", "unsure"] },
+    "battery_hours": { "type": ["number", "null"], "minimum": 0 },
+    "needs": {
+      "type": "array",
+      "items": { "enum": ["medicine", "food", "transport", "charging", "none"] },
+      "uniqueItems": true
+    },
+    "distress_signals": {
+      "type": "array",
+      "items": { "enum": ["breathing_difficulty", "chest_pain", "fall", "confusion", "none"] },
+      "uniqueItems": true
+    },
+    "language_detected": { "enum": ["en", "es", "hi"] },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+  }
+}

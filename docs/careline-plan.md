@@ -83,7 +83,23 @@ Ship the call loop and the Bedrock copilot first; everything else is optional. I
 
 CareLine is fully serverless: an outage event starts a Step Functions call wave, Connect and Lex run each call, Bedrock understands the answers, and the results land in DynamoDB, where Bedrock's copilot turns them into briefs for Jane.
 
-&#91;embedded content: CareLine architecture · 10 components, us-east-1\]
+```mermaid
+flowchart TD
+  dash["Operator dashboard<br/>React on S3 + CloudFront"] -->|trigger, read, override| api["API Gateway + Lambda"]
+  api -->|ask / brief| copilot["Bedrock operator copilot<br/>read-only tools on DynamoDB"]
+  api --> eb["EventBridge<br/>outage started / ended"]
+  api <-->|read / write| ddb[("DynamoDB<br/>residents, calls, tasks, audit")]
+  eb -->|starts call wave| sf["Step Functions + Lambda<br/>rules R0–R7 set triage"]
+  sf --> ddb
+  sf -->|dialer places the call| connect["Amazon Connect<br/>contact flow, Polly voices"]
+  connect <--> phone["Resident phone"]
+  connect -->|urgent transfer| op["Human operator<br/>Connect agent workspace"]
+  connect -->|speech| lex["Amazon Lex V2<br/>en_US, es_US, hi_IN"]
+  lex -->|each turn| hook["Lambda lex_hook<br/>redacts PII, validates JSON"]
+  hook --> br["Amazon Bedrock<br/>extract answers; KB + Guardrails for Q&A"]
+  hook -->|call result + task token| ddb
+  copilot -.->|tool calls| ddb
+```
 
 Read the middle column top to bottom for one call; the highlighted box is where triage is decided, by rules rather than the model.
 
@@ -307,7 +323,27 @@ Triage is a short, ordered list of deterministic rules. The first rule that matc
 - **`ResidentCheck` (one per resident, Standard workflow).** `PlaceCall` uses `.waitForTaskToken`: the dialer saves the token in `Calls`, and the contact flow's final Lambda calls `SendTaskSuccess` with the call status. A 180-second task timeout means NO\_ANSWER, because an unanswered outbound call never enters the flow. Then `Triage` (Lambda) → a Choice state routes to alert, tasks, recheck wait or retry wait, as drawn below.
 - **Outage ended.** An `careline.outage.ended` event runs a Lambda that stops every open `ResidentCheck` for that outage, so nobody gets called after power is back.
 
-&#91;embedded content: ResidentCheck state machine · one execution per resident\]
+```mermaid
+stateDiagram-v2
+  [*] --> PlaceCall
+  PlaceCall --> Triage: answered within 180 s
+  PlaceCall --> CheckAttempts: no answer
+  CheckAttempts --> WaitRetry: attempts < 2
+  WaitRetry --> PlaceCall: 10 min (demo 10 s)
+  CheckAttempts --> WelfareCheck: 2 attempts failed
+  WelfareCheck --> [*]
+  Triage --> Urgent: R0–R3, operator alert now
+  Triage --> HumanReview: R4, operator decides
+  Triage --> NeedsHelp: R5–R6, one task per need
+  Triage --> Safe: R7
+  Urgent --> [*]
+  HumanReview --> [*]
+  NeedsHelp --> WaitRecheck
+  Safe --> WaitRecheck
+  WaitRecheck --> PlaceCall: half the battery runway, or every 4 h if power is off
+```
+
+An outage-ended event stops every waiting check.
 
 Urgent and unclear cases end with a person; everyone else loops back for another call until the outage ends.
 
@@ -463,7 +499,14 @@ Four workstreams run in parallel and meet at four checkpoints; the voice path mu
 
 **Integration rule.** Merge to `main` at least every 2 hours. Each checkpoint below is a 10-minute standing demo of the real system, not a status update.
 
-&#91;embedded content: Build timeline · 6 phases, 4 gates, hours from kickoff\]
+| When (PT) | Phase | Work | Gate at the end |
+| --- | --- | --- | --- |
+| Fri 4–5 PM | Setup | Event account check, Connect instance and number, Bedrock access and logging, Lex bot shell, repo, CDK skeleton, Kiro steering, budget alert | — |
+| Fri 5–7 PM | First call | A: contact flow + English Lex bot. B: dialer + lex_hook with Bedrock extraction. C: dashboard skeleton + API stubs. D: seed residents, 30 scenarios, video script draft | **G1, 7 PM:** one real AI call end to end, or switch to web calling |
+| Fri 7–11 PM | Core loop | B: triage rules, workflows, tasks, audit. C: live feed, task queue, copilot tools. A: Spanish + Knowledge Base. D: eval passing in English, Kiro hook on | **G2, 11 PM:** full loop on seed data + first copilot brief |
+| Fri 11 PM – Sat 3 AM | Bedrock jobs and escalation | Copilot brief/ask/approve; retries, welfare checks, battery-runway callbacks; grounded answers with Guardrails; emergency transfer; eval in every language | **G3, 3 AM:** 0 missed urgent; Bedrock jobs 1 and 2 work |
+| Sat 3–6 AM | Polish (sleep in shifts) | Dashboard polish, fairness chart, Hindi, map if time. Cut order: map, SMS, Hindi voice, fairness chart | **Freeze, 6 AM:** bug fixes only; recording starts |
+| Sat 6–10:30 AM | Record, edit, submit | 6–9 AM record each segment twice + CloudWatch Bedrock logs; 9–10 AM edit and voiceover; submit by 10:00 AM | **Deadline 10:30 AM** |
 
 Judging is done from the video alone, so recording gets four protected hours; if the build runs late, shrink Polish, never the recording window.
 

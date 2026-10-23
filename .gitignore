@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Node / frontend
+node_modules/
+web/dist/
+
+# CDK
+cdk.out/
+cdk.context.json
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+.kiro/settings/mcp.json
+
+# Eval artifacts that change every run (commit the final report on purpose)
+eval/runs/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
