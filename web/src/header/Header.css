@@ -1,29 +1,26 @@
 .hdr {
   --hdr-muted: var(--graphite);
-  background: var(--sheet);
-  color: var(--ink);
-  border-bottom: 1px solid var(--rule);
-}
-
-/* During an outage the header turns ink: the room is in incident mode. */
-.hdr--active {
-  background: var(--ink);
-  color: #fff;
-  border-bottom-color: var(--ink);
-  --hdr-muted: #a9b6c2;
-}
-
-.hdr :focus-visible {
-  outline-color: currentColor;
-}
-
-.hdr-main {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px 32px;
-  min-height: 68px;
-  padding: 10px 16px;
+  min-height: 76px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--sheet);
+  color: var(--ink);
+}
+
+/* Once calls start, the header turns ink: the room is in incident mode. */
+.hdr--active {
+  --hdr-muted: #a9b6c2;
+  border-bottom-color: var(--ink);
+  background: var(--ink);
+  color: #fff;
+}
+
+.hdr :focus-visible {
+  outline-color: currentColor;
 }
 
 .brand {
@@ -47,7 +44,8 @@
 }
 
 .hdr-outage {
-  min-width: 0;
+  flex: 1;
+  min-width: 220px;
 }
 
 .hdr-outage-name {
@@ -57,15 +55,21 @@
 }
 
 .hdr-outage-meta {
+  max-width: 52ch;
   color: var(--hdr-muted);
   font-size: var(--fs-14);
 }
 
-/* The demo clock is the header's anchor. Tabular figures stop it jittering as it ticks. */
+/* The time now: runs-out times in the list are read against it. */
 .hdr-clock {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.hdr-clock-label {
+  color: var(--hdr-muted);
+  font-size: var(--fs-12);
 }
 
 .hdr-clock-time {
@@ -76,15 +80,15 @@
   letter-spacing: -0.01em;
 }
 
-.hdr-clock-caption {
-  color: var(--hdr-muted);
-  font-size: var(--fs-12);
-  line-height: 1.35;
+.hdr-clock-meridiem {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--fs-18);
 }
 
 .hdr-counts {
   display: flex;
-  gap: 22px;
+  gap: 20px;
 }
 
 .hdr-counts dt {
@@ -94,6 +98,7 @@
   color: var(--hdr-muted);
   font-size: var(--fs-12);
   line-height: 1.2;
+  white-space: nowrap;
 }
 
 .hdr-counts dd {
@@ -103,24 +108,16 @@
   line-height: 1.1;
 }
 
-.hdr-count-of {
-  color: var(--hdr-muted);
-  font-family: var(--font-ui);
-  font-weight: 500;
-  font-size: var(--fs-14);
-}
-
 .hdr-flags {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-left: auto;
 }
 
 .hdr-flag {
   display: inline-flex;
   align-items: center;
-  height: 22px;
+  height: 24px;
   padding: 0 7px;
   border: 1px dashed currentColor;
   border-radius: 3px;
@@ -133,15 +130,11 @@
   border-style: solid;
 }
 
-.btn--on-dark {
-  background: transparent;
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.45);
-}
-
-.btn--on-dark:hover:not(:disabled) {
-  background: var(--ink-2);
-  border-color: #fff;
+/* The one big action. */
+.btn--start {
+  height: 52px;
+  padding: 0 24px;
+  font-size: var(--fs-16);
 }
 
 .btn--light {
@@ -153,111 +146,4 @@
 .btn--light:hover:not(:disabled) {
   background: var(--paper);
   border-color: var(--paper);
-}
-
-.hdr-confirm {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--fs-14);
-}
-
-/* ---- idle ---- */
-
-.hdr-idle {
-  display: flex;
-  flex: 1;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 24px;
-}
-
-.hdr-idle-text {
-  min-width: 0;
-}
-
-.hdr-start {
-  display: flex;
-  gap: 8px;
-}
-
-.hdr-select {
-  height: 32px;
-  padding: 0 8px;
-  border: 1px solid var(--rule-strong);
-  border-radius: 4px;
-  background: var(--sheet);
-  font-size: var(--fs-14);
-  font-weight: 500;
-}
-
-.hdr-error {
-  flex-basis: 100%;
-  color: var(--triage-urgent);
-  font-weight: 600;
-  font-size: var(--fs-14);
-}
-
-.hdr-idle-clock {
-  color: var(--graphite);
-  font-size: var(--fs-14);
-}
-
-/* ---- zone strip ---- */
-
-.zones {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 16px;
-  padding: 0 16px 12px;
-}
-
-.zones-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  flex: 1;
-}
-
-.zone {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  background: var(--ink-2);
-  color: var(--hdr-muted);
-  font-size: var(--fs-14);
-}
-
-.zone--active {
-  border-color: rgba(255, 255, 255, 0.55);
-  color: #fff;
-}
-
-.zone-id {
-  font-weight: 700;
-}
-
-.zone-stats {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-left: 4px;
-  font-weight: 500;
-}
-
-.zone-flag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-weight: 600;
-}
-
-.zone-none {
-  margin-left: 2px;
-  opacity: 0.8;
 }

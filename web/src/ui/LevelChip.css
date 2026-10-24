@@ -1,0 +1,61 @@
+.lchip {
+  --lc: var(--lvl-waiting);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px 0 7px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--lc) 13%, white);
+  color: var(--ink);
+  font-weight: 600;
+  font-size: var(--fs-14);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.lchip--now { --lc: var(--lvl-now); }
+.lchip--soon { --lc: var(--lvl-soon); }
+.lchip--check { --lc: var(--lvl-check); }
+.lchip--supplies { --lc: var(--lvl-supplies); }
+.lchip--ok { --lc: var(--lvl-ok); }
+.lchip--calling { --lc: var(--lvl-calling); background: white; box-shadow: inset 0 0 0 1.5px var(--rule-strong); }
+.lchip--waiting { --lc: var(--lvl-waiting); background: var(--paper); color: var(--graphite); font-weight: 500; }
+
+/* "Help now" is the one level that reads as solid red with white words. */
+.lchip--now {
+  background: var(--lvl-now);
+  color: #fff;
+}
+
+.lchip--now .glyph circle {
+  fill: #fff;
+}
+
+.lchip--now .lchip-rule {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.lchip-rule {
+  margin-left: 2px;
+  font-weight: 500;
+  color: var(--graphite);
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A live call: a dot that pulses while the phone is ringing or answering. */
+.lchip-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ink);
+  animation: lchip-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes lchip-pulse {
+  50% {
+    opacity: 0.25;
+    transform: scale(0.7);
+  }
+}

@@ -1,47 +1,51 @@
-// One source for state colors: the map canvas reads these directly and
+// One source for level colors: the map canvas reads these directly and
 // applyColorTokens() copies them into CSS custom properties for the rest of the page.
-// Validated with the dataviz palette checker (all pairs, on white): every pair clears
-// CVD dE 8 except review/safe, which is why review pins are diamonds and safe pins are small.
-import type { TriageGroup } from '../api/types'
+// Checked with the dataviz palette validator (all pairs, on white): every hue pair clears
+// CVD dE 8 except Help soon / OK for now, so "OK for now" pins are drawn small and
+// "A person must check" is a diamond. No blue cleared both teal and purple, so
+// "Calling now" is an ink ring rather than a fourth cool hue.
+// Red is used for "Help now" only (CLAUDE.md section 3).
+import type { Status } from '../api'
 
 export const INK = '#14202C'
-export const NAVY = '#1D3A72'
 
-export const TRIAGE_COLORS: Record<TriageGroup, string> = {
-  URGENT: '#B3212E',
-  HUMAN_REVIEW: '#E0A21A',
-  UNREACHED: '#7048C0',
-  NEEDS_HELP: '#0A84A3',
-  PENDING: '#98A1AA',
-  SAFE: '#5FA83A',
+export const LEVEL_COLORS: Record<Status, string> = {
+  HELP_NOW: '#B3212E',
+  HELP_SOON: '#E0A21A',
+  PERSON_CHECK: '#7048C0',
+  NEEDS_SUPPLIES: '#0A84A3',
+  OK_FOR_NOW: '#5FA83A',
+  CALLING: INK,
+  NOT_CALLED: '#98A1AA',
 }
 
-/** Ink for numbers drawn on each fill: white where it holds contrast, dark ink elsewhere. */
-export const ON_TRIAGE: Record<TriageGroup, string> = {
-  URGENT: '#FFFFFF',
-  HUMAN_REVIEW: INK,
-  UNREACHED: TRIAGE_COLORS.UNREACHED,
-  NEEDS_HELP: '#FFFFFF',
-  PENDING: INK,
-  SAFE: INK,
+/** Ink for rank numbers drawn on each pin: white where it holds contrast, dark ink elsewhere. */
+export const ON_LEVEL: Record<Status, string> = {
+  HELP_NOW: '#FFFFFF',
+  HELP_SOON: INK,
+  PERSON_CHECK: '#FFFFFF',
+  NEEDS_SUPPLIES: '#FFFFFF',
+  OK_FOR_NOW: INK,
+  CALLING: INK,
+  NOT_CALLED: INK,
 }
 
-const TOKEN: Record<TriageGroup, string> = {
-  URGENT: 'urgent',
-  HUMAN_REVIEW: 'review',
-  UNREACHED: 'unreached',
-  NEEDS_HELP: 'help',
-  PENDING: 'pending',
-  SAFE: 'safe',
+const TOKEN: Record<Status, string> = {
+  HELP_NOW: 'now',
+  HELP_SOON: 'soon',
+  PERSON_CHECK: 'check',
+  NEEDS_SUPPLIES: 'supplies',
+  OK_FOR_NOW: 'ok',
+  CALLING: 'calling',
+  NOT_CALLED: 'waiting',
 }
 
-export function triageToken(group: TriageGroup): string {
-  return TOKEN[group]
+export function levelToken(status: Status): string {
+  return TOKEN[status]
 }
 
 export function applyColorTokens(root: HTMLElement = document.documentElement) {
-  for (const group of Object.keys(TRIAGE_COLORS) as TriageGroup[]) {
-    root.style.setProperty(`--triage-${TOKEN[group]}`, TRIAGE_COLORS[group])
+  for (const status of Object.keys(LEVEL_COLORS) as Status[]) {
+    root.style.setProperty(`--lvl-${TOKEN[status]}`, LEVEL_COLORS[status])
   }
-  root.style.setProperty('--navy', NAVY)
 }

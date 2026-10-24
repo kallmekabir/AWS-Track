@@ -1,52 +1,54 @@
-# CareLine operator dashboard
+# CareCall dashboard
 
-React + Vite dashboard for Jane, the duty officer (task graph W01-W10, F07). It polls
-the CareLine API every 3 s; the priority list and the map read the same
-`/outages/{id}/priority` poll.
+The one screen Jane uses during an outage (CLAUDE.md section 3): the ranked list of who
+to help first, a map of Zone A, and one person's details. It asks the backend for
+`GET /queue` every 3 seconds; the list, the pins and the details all read that one answer.
 
 ## Run it
 
 ```bash
 npm install
-npm run dev          # http://localhost:5173 (the map key only allows this origin)
+npm run dev          # http://localhost:5173 (the map key only allows this address)
 ```
 
-Settings live in `web/.env.local` (gitignored, see task graph C2):
+Start the backend first (see the main `README.md`, "Run the backend"). Settings live in
+`web/.env.local`, which git ignores:
 
-| Variable | Default | Notes |
+| Variable | Default | What it does |
 | --- | --- | --- |
-| `VITE_API_BASE` | unset | API Gateway stage URL. While unset, the dashboard uses mocks |
-| `VITE_USE_MOCKS` | `true` when no API base | Force mocks on with `true` |
-| `VITE_API_KEY`, `VITE_OPERATOR_ID` | `''`, `jane` | Sent as `x-api-key` and `x-operator-id` |
-| `VITE_AWS_REGION`, `VITE_MAP_STYLE`, `VITE_LOCATION_API_KEY` | `us-east-1`, `Monochrome` | Without a map key the map panel hides and the list goes full width |
+| `VITE_API_URL` | `http://localhost:8000` | The backend address |
+| `VITE_LOCATION_API_KEY` | none | Amazon Location map key. Without it the map hides and the list goes full width |
+| `VITE_USE_MOCKS` | off | `true` answers from `src/mock/` instead of the backend |
 
-## Mock mode
+## Mock mode: rehearse without the backend
 
-`src/api/mock/` is an in-browser stand-in for the API: a scripted Zone 2 (East San
-Jose) outage with 10 synthetic residents, run on the demo clock at 60x. Press
-**Start outage** (Zone 2) and the wave plays out in about a minute; the battery-runway
-recheck for R-137 fires about 3.5 minutes in.
+Add `?mock` to the address (or set `VITE_USE_MOCKS=true`). The mock plays the 8 made-up
+Zone A residents from `backend/app/seed.py`: Start outage calls 4 at a time, each call
+steps through the 5 questions, and the results follow the worked example in
+`docs/RANKING.md` (Daniel and Ruth "Help now", then Maria). It runs fast: the whole wave
+takes about a minute. The mock also plays Phase 2 (levels, drive times), which the real
+backend doesn't do yet.
 
-URL presets for rehearsals and screenshots:
+- `?mock=9` starts 9 seconds into the wave (calls in progress)
+- `?mock=70` starts after every call has finished
+- `?select=r-002` opens that person's details
 
-- `?mock=running` starts 47 demo minutes into the outage, with every triage group on screen
-- `?mock=215` starts 215 minutes in, just after R-137's battery-runway recheck
-- `?select=R-131` opens a resident (route, drawer) on load
+## Where things are
 
-## Layout
+| Folder | What it holds |
+| --- | --- |
+| `src/api.ts` | Every call to the backend (and the switch to the mock) |
+| `src/mock/` | The mock backend for rehearsals |
+| `src/layout/` | The one screen and its 3-second poll |
+| `src/header/` | Zone, time now, counts, Start outage |
+| `src/priority/` | The ranked list and the backup gauges |
+| `src/map/` | The Amazon Location map and its pins |
+| `src/drawer/` | One person's details |
+| `src/lib/levels.ts` | Plain words for every level and rule |
 
-| Folder | Task | What it holds |
-| --- | --- | --- |
-| `src/api/` | F07 | Contract types (C8, C9), typed client, `usePoll`, mocks |
-| `src/layout/` | W01 | The dashboard grid and polling |
-| `src/header/` | W02 | Outage, demo clock, counters, start and end, zone strip |
-| `src/priority/` | W03 | Priority list and battery-runway gauges |
-| `src/map/` | W04, W05, W10 | Amazon Location map, canvas-drawn pins, route on selection |
-| `src/drawer/` | W06 | Resident drawer: transcript beside Bedrock JSON, override |
-| `src/tasks/`, `src/feed/` | W07 | Task queue, call log |
-| `src/copilot/` | W08 | Brief, dispatch plan, approve, Ask CareLine |
-| `src/fairness/` | W09 | Reach by language, what we store |
+Rules the code keeps:
 
-Design rules: only a resident's state is colored (triage colors in `src/map/colors.ts`);
-words written by Bedrock are set in Source Serif, everything computed by code in Barlow;
-the frontend never re-sorts the priority list.
+- The list shows people in the order `/queue` returns; the browser never re-sorts.
+- Every level shows its words and its rule ID, never color alone.
+- Red is for "Help now" only.
+- Buttons are at least 44 px tall.

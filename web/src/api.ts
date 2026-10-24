@@ -1,6 +1,12 @@
 // All calls from the Vite dashboard to the CareCall backend live here.
 // Set the address in web/.env.local:   VITE_API_URL=http://localhost:8000
+// With VITE_USE_MOCKS=true (or ?mock in the address) the same functions answer from
+// src/mock/ instead, so the dashboard runs without the backend.
+import { config } from './config'
+import * as mock from './mock'
+
 const API = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+const MOCK = config.useMocks
 
 export type Status =
   | 'HELP_NOW'
@@ -78,18 +84,21 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 const zoneQuery = (zone: string) => `?zone=${encodeURIComponent(zone)}`
 
 // GET requests: read data
-export const getQueue = (zone = 'A') => request<Resident[]>(`/queue${zoneQuery(zone)}`)
-export const getResidents = (zone = 'A') => request<Resident[]>(`/residents${zoneQuery(zone)}`)
-export const getResident = (id: string) => request<Resident>(`/residents/${id}`)
+export const getQueue = (zone = 'A') =>
+  MOCK ? mock.getQueue(zone) : request<Resident[]>(`/queue${zoneQuery(zone)}`)
+export const getResidents = (zone = 'A') =>
+  MOCK ? mock.getResidents(zone) : request<Resident[]>(`/residents${zoneQuery(zone)}`)
+export const getResident = (id: string) => (MOCK ? mock.getResident(id) : request<Resident>(`/residents/${id}`))
 
 // POST / PATCH requests: change data
 export const startOutage = (zone = 'A') =>
-  request<OutageResult>('/outages', { method: 'POST', body: JSON.stringify({ zone }) })
+  MOCK ? mock.startOutage(zone) : request<OutageResult>('/outages', { method: 'POST', body: JSON.stringify({ zone }) })
 
-export const callAgain = (id: string) => request<Resident>(`/residents/${id}/call`, { method: 'POST' })
+export const callAgain = (id: string) =>
+  MOCK ? mock.callAgain(id) : request<Resident>(`/residents/${id}/call`, { method: 'POST' })
 
 export const resetDemo = (zone = 'A') =>
-  request<{ reset: number }>(`/demo/reset${zoneQuery(zone)}`, { method: 'POST' })
+  MOCK ? mock.resetDemo(zone) : request<{ reset: number }>(`/demo/reset${zoneQuery(zone)}`, { method: 'POST' })
 
 export const createResident = (resident: Partial<Resident>) =>
   request<Resident>('/residents', { method: 'POST', body: JSON.stringify(resident) })

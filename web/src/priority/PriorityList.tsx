@@ -1,33 +1,33 @@
-// W03: every resident in the outage, in the order the API returns (priority_key in
-// code). The frontend never re-sorts. Clicking a row selects the resident.
+// The ranked list: everyone in the zone in the order GET /queue returns. The ranking
+// rules on the backend set that order; the dashboard never re-sorts. Clicking a row
+// opens that person's details.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { OutageMeta, PriorityRow } from '../api/types'
-import { triageToken } from '../map/colors'
+import type { Resident } from '../api'
+import { callProgress, canCallAgain, DEVICE_GROUP_TEXT, deviceLine, reasonLine } from '../lib/levels'
+import { levelToken } from '../map/colors'
 import { useSelection } from '../state/selection'
-import { TriageChip } from '../ui/TriageChip'
+import { LevelChip } from '../ui/LevelChip'
 import { RunwayCell, RunwayScale } from './Runway'
 import './PriorityList.css'
 
-const TIER_TEXT = { 1: 'Tier 1: ventilator or oxygen', 2: 'Tier 2: dialysis or refrigerated medicine', 3: 'Tier 3: mobility device' }
-
 interface Props {
-  rows: PriorityRow[]
-  outage: OutageMeta | null
-  simNow: number | null
+  rows: Resident[]
+  now: number
   loading: boolean
+  onCallAgain: (r: Resident) => void
 }
 
-export function PriorityList({ rows, outage, simNow, loading }: Props) {
+export function PriorityList({ rows, now, loading, onCallAgain }: Props) {
   const { selectedId, select } = useSelection()
   const rowEls = useRef(new Map<string, HTMLTableRowElement>())
   const lastTops = useRef(new Map<string, number>())
-  const seenUrgent = useRef<Set<string> | null>(null)
+  const seenHelpNow = useRef<Set<string> | null>(null)
   const [flashing, setFlashing] = useState<Set<string>>(new Set())
 
-  const order = rows.map((r) => r.resident_id).join(',')
-  const urgent = rows.filter((r) => r.triage_group === 'URGENT').map((r) => r.resident_id).join(',')
+  const order = rows.map((r) => r.id).join(',')
+  const helpNow = rows.filter((r) => r.status === 'HELP_NOW').map((r) => r.id).join(',')
 
-  // Rows that change rank slide to their new place, so Jane sees the reorder happen.
+  // Rows that change place slide to their new spot, so Jane sees the reorder happen.
   useLayoutEffect(() => {
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     const tops = new Map<string, number>()
@@ -45,19 +45,19 @@ export function PriorityList({ rows, outage, simNow, loading }: Props) {
     lastTops.current = tops
   }, [order])
 
-  // A resident who just became urgent flashes once.
+  // Someone who just became "Help now" flashes once.
   useEffect(() => {
     if (!rows.length) return
-    const now = new Set(urgent ? urgent.split(',') : [])
-    const seen = seenUrgent.current
-    seenUrgent.current = now
+    const current = new Set(helpNow ? helpNow.split(',') : [])
+    const seen = seenHelpNow.current
+    seenHelpNow.current = current
     if (!seen) return
-    const fresh = [...now].filter((id) => !seen.has(id))
+    const fresh = [...current].filter((id) => !seen.has(id))
     if (!fresh.length) return
     setFlashing(new Set(fresh))
     const t = setTimeout(() => setFlashing(new Set()), 1800)
     return () => clearTimeout(t)
-  }, [urgent, rows.length])
+  }, [helpNow, rows.length])
 
   useEffect(() => {
     if (selectedId) rowEls.current.get(selectedId)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
@@ -67,109 +67,100 @@ export function PriorityList({ rows, outage, simNow, loading }: Props) {
     <section className="panel plist" aria-labelledby="plist-title">
       <div className="panel-head">
         <h2 className="panel-title" id="plist-title">
-          Priority list
+          Who to help first
         </h2>
-        {outage && rows.length > 0 && (
+        {rows.length > 0 && (
           <p className="panel-meta">
-            {rows.length} residents, highest priority first. The triage rules set this order, not the model.
+            {rows.length} people. The ranking rules set this order, not the AI.
           </p>
         )}
       </div>
 
-      {!outage ? (
-        <p className="empty">
-          No active outage. Start one from the header and every registered resident in that zone appears here,
-          highest priority first.
-        </p>
-      ) : loading ? (
-        <p className="empty">Loading residents</p>
+      {loading ? (
+        <p className="empty">Loading the list</p>
       ) : rows.length === 0 ? (
-        <p className="empty">No registered residents in {outage.zone_name}.</p>
+        <p className="empty">Nobody is registered in this zone yet.</p>
       ) : (
         <div className="plist-scroll">
           <table className="ptable">
             <thead>
               <tr>
                 <th className="c-rank" scope="col">
-                  <span className="sr-only">Rank</span>
+                  <span className="sr-only">Place in line</span>
                 </th>
-                <th className="c-res" scope="col">Resident</th>
-                <th className="c-triage" scope="col">Triage</th>
-                <th className="c-tier" scope="col">Tier</th>
+                <th className="c-res" scope="col">Person</th>
+                <th className="c-level" scope="col">Level and reason</th>
                 <th className="c-runway" scope="col">
-                  Battery left
+                  Backup left
                   <RunwayScale />
                 </th>
-                <th className="c-calls" scope="col">Calls</th>
-                <th className="c-drive" scope="col">Drive to hospital</th>
+                <th className="c-drive" scope="col">Supplier drive</th>
+                <th className="c-act" scope="col">
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => {
-                const selected = row.resident_id === selectedId
-                const access = row.hospital_access
+              {rows.map((r, i) => {
+                const selected = r.id === selectedId
+                const progress = callProgress(r)
+                const reason = reasonLine(r)
                 return (
                   <tr
-                    key={row.resident_id}
+                    key={r.id}
                     ref={(el) => {
-                      if (el) rowEls.current.set(row.resident_id, el)
-                      else rowEls.current.delete(row.resident_id)
+                      if (el) rowEls.current.set(r.id, el)
+                      else rowEls.current.delete(r.id)
                     }}
-                    className={`prow prow--${triageToken(row.triage_group)}${selected ? ' is-selected' : ''}${flashing.has(row.resident_id) ? ' is-flash' : ''}`}
-                    onClick={() => select(selected ? null : row.resident_id)}
+                    className={`prow prow--${levelToken(r.status)}${selected ? ' is-selected' : ''}${flashing.has(r.id) ? ' is-flash' : ''}`}
+                    onClick={() => select(selected ? null : r.id)}
                   >
-                    <td className="c-rank num">{row.rank}</td>
+                    <td className="c-rank num">{i + 1}</td>
                     <td className="c-res">
-                      <span className="res-line">
-                        <button
-                          className="res-id num"
-                          aria-pressed={selected}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            select(selected ? null : row.resident_id)
-                          }}
-                        >
-                          {row.resident_id}
-                        </button>
-                        <span className="res-name">{row.first_name}</span>
-                      </span>
-                      <span className="res-sub">
-                        {row.device_type}
-                        <span className="res-lang">{row.language.toUpperCase()}</span>
-                        {row.simulated && (
-                          <span className="tag" title="Answered by the call simulator, not a real phone">
-                            sim
-                          </span>
-                        )}
+                      <button
+                        className="res-name"
+                        aria-pressed={selected}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          select(selected ? null : r.id)
+                        }}
+                      >
+                        {r.name}
+                      </button>
+                      <span className="res-sub" title={DEVICE_GROUP_TEXT[r.device_group]}>
+                        {deviceLine(r)}
                       </span>
                     </td>
-                    <td className="c-triage">
-                      <TriageChip group={row.triage_group} rule={row.rule_id} />
-                    </td>
-                    <td className="c-tier">
-                      <span className={`tier tier--${row.risk_tier} num`} title={TIER_TEXT[row.risk_tier]}>
-                        {row.risk_tier}
-                      </span>
+                    <td className="c-level">
+                      <LevelChip status={r.status} />
+                      {progress ? (
+                        <span className="lvl-line lvl-line--live">{progress}</span>
+                      ) : (
+                        reason && <span className="lvl-line">{reason}</span>
+                      )}
+                      {r.last_error && <span className="lvl-line lvl-line--error">Last error: {r.last_error}</span>}
                     </td>
                     <td className="c-runway">
-                      <RunwayCell row={row} simNow={simNow} />
+                      <RunwayCell resident={r} now={now} />
                     </td>
-                    <td className="c-calls num">{row.attempts || '–'}</td>
                     <td className="c-drive">
-                      {!access ? (
-                        <span className="drive-none" title="Working out the nearest hospital">
-                          –
-                        </span>
-                      ) : access.basis === 'live_traffic' && access.drive_minutes !== null ? (
-                        <>
-                          <span className="drive-main num">{access.drive_minutes} min</span>
-                          <span className="drive-sub">live traffic</span>
-                        </>
+                      {r.drive_minutes === null ? (
+                        <span className="drive-sub">unknown</span>
                       ) : (
-                        <>
-                          <span className="drive-main num">{access.distance_km.toFixed(1)} km</span>
-                          <span className="drive-sub">straight-line</span>
-                        </>
+                        <span className="drive-main num">{Math.round(r.drive_minutes)} min</span>
+                      )}
+                    </td>
+                    <td className="c-act">
+                      {canCallAgain(r) && (
+                        <button
+                          className="btn btn--quiet"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onCallAgain(r)
+                          }}
+                        >
+                          Call again
+                        </button>
                       )}
                     </td>
                   </tr>

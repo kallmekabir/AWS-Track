@@ -1,53 +1,18 @@
-// Sources and layers for the map panel (map spec section 8.3). Residents are a symbol
-// layer rather than a plain circle layer so review pins can be diamonds and the top
-// ten pins can carry their rank number.
+// The residents layer. Pins are a symbol layer rather than a plain circle layer so
+// "A person must check" can be a diamond and the top ten pins can carry their place in line.
+// Suppliers join the map once app/location.py exposes them (docs/NEXT_STEPS.md, task 10).
 import type { FeatureCollection } from 'geojson'
 import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl'
-import type { PriorityRow } from '../api/types'
-import { NAVY } from './colors'
+import type { Resident } from '../api'
 import { pinId } from './pins'
 
 export const EMPTY: FeatureCollection = { type: 'FeatureCollection', features: [] }
 
-/** Only the top ten pins carry their rank, so the list and the map read together. */
+/** Only the top ten pins carry their number, so the list and the map read together. */
 const NUMBERED = 10
 
 export function addLayers(map: MapLibreMap) {
-  map.addSource('route', { type: 'geojson', data: EMPTY })
-  map.addSource('hospitals', { type: 'geojson', data: EMPTY })
   map.addSource('residents', { type: 'geojson', data: EMPTY })
-
-  map.addLayer({
-    id: 'route-casing',
-    type: 'line',
-    source: 'route',
-    layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#ffffff', 'line-width': 9 },
-  })
-  map.addLayer({
-    id: 'route-line',
-    type: 'line',
-    source: 'route',
-    layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': NAVY, 'line-width': 4.5 },
-  })
-  map.addLayer({
-    id: 'hospitals',
-    type: 'symbol',
-    source: 'hospitals',
-    layout: { 'icon-image': 'hosp', 'icon-allow-overlap': true, 'icon-ignore-placement': true },
-  })
-  map.addLayer({
-    id: 'hospital-labels',
-    type: 'symbol',
-    source: 'hospitals',
-    minzoom: 13,
-    layout: {
-      'icon-image': ['concat', 'hlabel|', ['get', 'hospital_id']],
-      'icon-anchor': 'left',
-      'icon-offset': [15, 0],
-    },
-  })
   map.addLayer({
     id: 'residents',
     type: 'symbol',
@@ -61,25 +26,27 @@ export function addLayers(map: MapLibreMap) {
   })
 }
 
-export function residentFeatures(rows: PriorityRow[], selectedId: string | null): FeatureCollection {
+/** Rows arrive in /queue order, so a row's position is its place in line. */
+export function residentFeatures(rows: Resident[], selectedId: string | null): FeatureCollection {
   return {
     type: 'FeatureCollection',
-    features: rows.map((r) => {
-      const selected = r.resident_id === selectedId
+    features: rows.map((r, i) => {
+      const place = i + 1
+      const selected = r.id === selectedId
       return {
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [r.lng, r.lat] },
         properties: {
-          resident_id: r.resident_id,
-          icon: pinId(r.triage_group, r.rank <= NUMBERED ? r.rank : 0, selected),
-          // Higher draws on top: the selected pin, then rank 1 down.
-          sort: selected ? 1000 : 500 - r.rank,
+          id: r.id,
+          icon: pinId(r.status, place <= NUMBERED ? place : 0, selected),
+          // Higher draws on top: the selected pin, then first in line down.
+          sort: selected ? 1000 : 500 - place,
         },
       }
     }),
   }
 }
 
-export function source(map: MapLibreMap, id: 'route' | 'hospitals' | 'residents'): GeoJSONSource {
-  return map.getSource(id) as GeoJSONSource
+export function residentsSource(map: MapLibreMap): GeoJSONSource {
+  return map.getSource('residents') as GeoJSONSource
 }

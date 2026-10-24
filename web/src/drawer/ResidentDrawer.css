@@ -1,4 +1,4 @@
-/* Opens over the map's right edge; the map pads its camera so the route stays visible. */
+/* Opens over the map's right edge; the map pads its camera so the person stays in view. */
 .drawer {
   position: absolute;
   top: 0;
@@ -26,7 +26,7 @@
 }
 
 .dr-head {
-  --tab: var(--triage-pending);
+  --tab: var(--lvl-waiting);
   display: flex;
   align-items: flex-start;
   gap: 12px;
@@ -34,14 +34,15 @@
   border-bottom: 1px solid var(--rule);
 }
 
-.dr-head--urgent { --tab: var(--triage-urgent); }
-.dr-head--review { --tab: var(--triage-review); }
-.dr-head--unreached { --tab: var(--triage-unreached); }
-.dr-head--help { --tab: var(--triage-help); }
-.dr-head--pending { --tab: var(--rule-strong); }
-.dr-head--safe { --tab: var(--triage-safe); }
+.dr-head--now { --tab: var(--lvl-now); }
+.dr-head--soon { --tab: var(--lvl-soon); }
+.dr-head--check { --tab: var(--lvl-check); }
+.dr-head--supplies { --tab: var(--lvl-supplies); }
+.dr-head--ok { --tab: var(--lvl-ok); }
+.dr-head--calling { --tab: var(--lvl-calling); }
+.dr-head--waiting { --tab: var(--rule-strong); }
 
-/* The same tab as the list row, carried into the drawer. */
+/* The same tab as the list row, carried into the details. */
 .dr-rank {
   display: flex;
   align-items: center;
@@ -55,7 +56,7 @@
   line-height: 1;
 }
 
-.dr-head--unreached .dr-rank {
+.dr-head--calling .dr-rank {
   border-left-style: double;
 }
 
@@ -65,18 +66,9 @@
 }
 
 .dr-title {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 8px;
   font-weight: 700;
   font-size: var(--fs-21);
   line-height: 1.15;
-}
-
-.dr-name {
-  color: var(--graphite);
-  font-weight: 500;
 }
 
 .dr-sub {
@@ -88,8 +80,8 @@
 .dr-close {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   border: 1px solid var(--rule);
   border-radius: 4px;
   background: var(--sheet);
@@ -105,20 +97,18 @@
   overflow: auto;
   overscroll-behavior: contain;
   padding: 4px 16px 24px;
-  container-type: inline-size;
 }
 
 .dr-decision {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 10px;
-  padding: 12px 0;
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  padding: 12px 0 14px;
 }
 
 .dr-rule {
-  font-weight: 500;
-  font-size: var(--fs-14);
+  font-weight: 600;
+  font-size: var(--fs-16);
 }
 
 .dr-section {
@@ -127,9 +117,6 @@
 }
 
 .dr-h {
-  display: flex;
-  align-items: center;
-  gap: 6px;
   margin-bottom: 8px;
   font-family: var(--font-display);
   font-weight: 600;
@@ -142,7 +129,12 @@
   font-size: var(--fs-14);
 }
 
-/* ---- runway ---- */
+.dr-muted code {
+  font-family: var(--font-code);
+  font-size: 0.9em;
+}
+
+/* ---- backup runway ---- */
 
 .dr-runway-head {
   display: flex;
@@ -175,7 +167,7 @@
   transition: width 1s linear;
 }
 
-.dr-r2 {
+.dr-r3 {
   position: absolute;
   top: -4px;
   bottom: -4px;
@@ -183,24 +175,12 @@
   background: var(--ink);
 }
 
-/* Next check-in: a notch cut into the bar. */
-.dr-next {
-  position: absolute;
-  top: -5px;
-  width: 12px;
-  height: 20px;
-  margin-left: -6px;
-  border: 2.5px solid var(--sheet);
-  border-radius: 4px;
-  background: var(--navy);
-}
-
 .dr-track-labels {
   position: relative;
   display: flex;
   justify-content: space-between;
   height: 16px;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   color: var(--graphite);
   font-size: var(--fs-12);
 }
@@ -212,230 +192,56 @@
   font-weight: 600;
 }
 
-/* ---- attempts ---- */
-
-.dr-attempts {
+.dr-facts {
   display: grid;
-  gap: 4px;
-}
-
-.dr-attempt {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 10px;
-  width: 100%;
-  padding: 6px 8px;
-  border: 1px solid var(--rule);
-  border-radius: 4px;
-  background: var(--sheet);
-  font-size: var(--fs-14);
-  text-align: left;
-  cursor: pointer;
-}
-
-.dr-attempt[aria-pressed='true'] {
-  border-color: var(--ink);
-  box-shadow: inset 3px 0 0 var(--ink);
-}
-
-.dr-attempt-no {
-  font-weight: 700;
-}
-
-.dr-attempt-what {
-  flex: 1;
-  color: var(--graphite);
-}
-
-/* ---- conversation ---- */
-
-.dr-convo {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 14px;
-}
-
-@container (max-width: 420px) {
-  .dr-convo {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-.dr-turns {
-  display: grid;
-  gap: 8px;
-}
-
-.dr-turn {
-  display: grid;
-  gap: 1px;
-  font-size: var(--fs-14);
-  line-height: 1.4;
-}
-
-.dr-speaker {
-  color: var(--muted);
-  font-size: var(--fs-12);
-  font-weight: 600;
-}
-
-.dr-turn--careline .dr-words {
-  color: var(--graphite);
-}
-
-/* The fixed introduction is the same on every call; keep it short so the answers lead. */
-.dr-turn--intro .dr-words {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-}
-
-.dr-turn--resident .dr-words {
-  font-weight: 600;
-}
-
-.dr-redacted {
-  display: inline-block;
-  padding: 0 4px;
-  border-radius: 3px;
-  background: var(--paper);
-  color: var(--graphite);
-  font-size: var(--fs-12);
-  font-weight: 600;
-  line-height: 1.5;
-}
-
-.dr-json {
-  margin: 0;
-  padding: 10px 0;
-  border-radius: 4px;
-  background: #f6f8f9;
-  font-family: var(--font-code);
-  font-size: 11px;
-  line-height: 1.75;
-  white-space: pre-wrap;
-}
-
-/* Long values wrap with a hanging indent instead of being clipped. */
-.dr-json > span {
-  display: block;
-  padding: 0 8px 0 26px;
-  text-indent: -18px;
-}
-
-.dr-json > span.is-hit {
-  background: color-mix(in srgb, var(--navy) 11%, white);
-  box-shadow: inset 3px 0 0 var(--navy);
-}
-
-.j-key {
-  color: var(--graphite);
-}
-
-.j-val {
-  color: var(--ink);
-  font-weight: 600;
-}
-
-.dr-json-note {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
   margin-top: 6px;
 }
 
-/* ---- decision log ---- */
-
-.dr-log {
-  display: grid;
-  gap: 6px;
-  font-size: var(--fs-14);
-}
-
-.dr-log li {
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
-  column-gap: 8px;
-}
-
-.dr-log-time {
+.dr-facts dt {
   color: var(--graphite);
+  font-size: var(--fs-12);
 }
 
-.dr-log-hash {
-  grid-column: 2;
-  color: var(--muted);
-  font-family: var(--font-code);
-  font-size: 11px;
+.dr-facts dd {
+  font-weight: 600;
+  font-size: var(--fs-16);
 }
 
-.dr-log li.is-override {
-  padding: 6px 0;
-  border-top: 1px solid var(--rule);
-  border-bottom: 1px solid var(--rule);
+/* ---- what they said ---- */
+
+.dr-answers {
+  display: grid;
+  gap: 10px;
 }
 
-.dr-log-reason {
-  display: block;
+.dr-answer {
+  display: grid;
+  gap: 2px;
+}
+
+.dr-q {
   color: var(--graphite);
+  font-size: var(--fs-12);
+  line-height: 1.35;
 }
 
-/* ---- override ---- */
-
-.dr-choices {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 14px;
-  margin: 0 0 10px;
-  padding: 0;
-  border: 0;
+.dr-a {
+  font-weight: 600;
+  font-size: var(--fs-16);
+  line-height: 1.35;
 }
 
-.dr-choices legend {
-  width: 100%;
-  margin-bottom: 6px;
-  padding: 0;
-}
-
-.dr-choice {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
+.dr-error {
+  margin-top: 8px;
+  color: var(--lvl-now);
   font-weight: 600;
   font-size: var(--fs-14);
 }
 
-.dr-choice.is-current {
-  color: var(--muted);
-}
-
-.dr-reason-label {
-  display: block;
-  margin-bottom: 4px;
-  font-weight: 600;
-  font-size: var(--fs-14);
-}
-
-.dr-reason {
-  display: block;
-  width: 100%;
-  margin-bottom: 6px;
-  padding: 8px;
-  border: 1px solid var(--rule-strong);
-  border-radius: 4px;
-  font-size: var(--fs-14);
-  resize: vertical;
-}
-
-.dr-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.dr-saved {
-  margin-bottom: 8px;
-  font-weight: 600;
-  font-size: var(--fs-14);
+.dr-call {
+  margin-top: 12px;
 }
 
 @media (max-width: 1000px) {

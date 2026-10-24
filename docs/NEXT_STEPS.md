@@ -97,9 +97,9 @@ Docs: [StartOutboundVoiceContact](https://docs.aws.amazon.com/connect/latest/API
 
 **Ask me first:** Why poll every 3 seconds instead of WebSockets? Why must every level show its reason?
 
-- [ ] **13.** Load `GET /queue` and `GET /residents` every 3 seconds. Show the level pill, reason, and a countdown to `runs_out_at`. *(Started: `web/src/App.tsx` polls `/queue` every 3 s and shows the level pill, rule + reason, live call progress and "Runs out at …"; a ticking countdown comes once Phase 2 fills `runs_out_at`.)*
-- [ ] **14. Map with Amazon Location tiles.** This needs a map library in the browser (MapLibre is the usual one), so ask me before adding it. Use a browser API key limited to map actions.
-- [ ] **15. Detail panel:** what they said, Bedrock's facts, the rule ID, and the time to spare. *(Started: "What they said" expands each person's answers.)*
+- [ ] **13.** Load `GET /queue` and `GET /residents` every 3 seconds. Show the level pill, reason, and a countdown to `runs_out_at`. *(Started: `web/src/layout/Dashboard.tsx` polls `/queue` every 3 s; the ranked list (`web/src/priority/`) shows the level pill, rule + reason, live call progress, and a backup gauge with a ticking countdown to `runs_out_at`. Tested with a dry-run backend and hand-entered check-ins.)*
+- [ ] **14. Map with Amazon Location tiles.** This needs a map library in the browser (MapLibre is the usual one), so ask me before adding it. Use a browser API key limited to map actions. *(Started: MapLibre approved Oct 23. `web/src/map/` shows every resident as a pin colored by level and numbered by place in line; clicking a pin opens their details. Suppliers join the map once task 10 exposes them.)*
+- [ ] **15. Detail panel:** what they said, Bedrock's facts, the rule ID, and the time to spare. *(Started: `web/src/drawer/` shows what they said (live during a call), the rule and reason, the backup countdown, supplier drive, missed calls and Call again. Bedrock's facts and time to spare need Phase 2 fields in `/queue`.)*
 - [ ] **16. Start outage button** calls `POST /outages`. The Acknowledge button saves who acknowledged. *(Start outage and "Call again" are in; Acknowledge isn't yet.)*
 
 ---
@@ -152,3 +152,6 @@ Add a line whenever we decide something, so nobody has to ask twice.
 | Oct 23 | Teammates play the personas Daniel, Ruth, Maria, Linh | The dashboard then matches the worked example in `docs/RANKING.md` |
 | Oct 23 | Emergency detection uses phrases, not the bare word "help" | Question 5 invites "help with groceries" |
 | Oct 23 | `StartOutboundVoiceContact` IAM permission uses `Resource: "*"` | The action has no resource-level permissions (AWS service reference); `DescribeContact` is scoped to our instance |
+| Oct 23 | Dashboard is one screen: ranked list, map, one person's details. The CareLine copilot, task, call-log and fairness panels were removed | CLAUDE.md section 3; none had a CareCall endpoint |
+| Oct 23 | Dashboard packages: `maplibre-gl` for the map; Barlow fonts bundled with `@fontsource` | MapLibre draws Amazon Location tiles in the browser (task 14); bundled fonts mean no calls to a font service |
+| Oct 23 | Dashboard mock mode: `VITE_USE_MOCKS=true` in `web/.env.local`, or `?mock` in the address | Rehearse the screen without the backend or phones; `web/src/mock/` answers in the same shapes as `api.ts` |

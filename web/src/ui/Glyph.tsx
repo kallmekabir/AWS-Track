@@ -1,29 +1,20 @@
-// The same shape per triage group everywhere (list, legend, map pins), so state never
-// rests on color alone: review is a diamond, unreached is an open ring.
-import type { TriageGroup } from '../api/types'
-import { NAVY, TRIAGE_COLORS } from '../map/colors'
+// The same shape per level everywhere (list, legend, map pins), so a level never rests
+// on color alone: "A person must check" is a diamond, "Calling now" is an open ring.
+import type { Status } from '../api'
+import { LEVEL_COLORS } from '../map/colors'
 
-export function Glyph({ group, size = 10 }: { group: TriageGroup; size?: number }) {
-  const c = TRIAGE_COLORS[group]
+export function Glyph({ status, size = 10 }: { status: Status; size?: number }) {
+  const c = LEVEL_COLORS[status]
   const h = size / 2
   return (
     <svg className="glyph" width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
-      {group === 'HUMAN_REVIEW' ? (
+      {status === 'PERSON_CHECK' ? (
         <path d={`M${h} 0 L${size} ${h} L${h} ${size} L0 ${h} Z`} fill={c} />
-      ) : group === 'UNREACHED' ? (
+      ) : status === 'CALLING' ? (
         <circle cx={h} cy={h} r={h - 1.25} fill="none" stroke={c} strokeWidth={2.5} />
       ) : (
-        <circle cx={h} cy={h} r={group === 'SAFE' || group === 'PENDING' ? h * 0.8 : h} fill={c} />
+        <circle cx={h} cy={h} r={status === 'OK_FOR_NOW' || status === 'NOT_CALLED' ? h * 0.8 : h} fill={c} />
       )}
-    </svg>
-  )
-}
-
-export function HospitalGlyph({ size = 12 }: { size?: number }) {
-  return (
-    <svg className="glyph" width={size} height={size} viewBox="0 0 12 12" aria-hidden="true">
-      <rect width="12" height="12" rx="2" fill={NAVY} />
-      <path d="M3.5 2.8v6.4M8.5 2.8v6.4M3.5 6h5" stroke="#fff" strokeWidth="1.6" />
     </svg>
   )
 }

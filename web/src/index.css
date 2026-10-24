@@ -1,6 +1,6 @@
-/* CareLine operator dashboard: tokens and base styles.
-   Color rule: only a person's state is colored (triage tokens, set from src/map/colors.ts).
-   Everything else is ink on white. Navy is reserved for hospitals and routes. */
+/* CareCall dashboard: tokens and base styles.
+   Color rule: only a person's level is colored (--lvl-* tokens, set from src/map/colors.ts),
+   always next to its words. Red is "Help now" only. Everything else is ink on white. */
 
 :root {
   --paper: #eef1f3;
@@ -15,11 +15,9 @@
   --select: #e7eef5;
   --focus: #1d3a72;
 
-  /* Barlow carries everything computed by code or entered by a person.
-     Source Serif carries only words written by Amazon Bedrock. */
+  /* Barlow: narrow, so numbers and names fit in a dense list. */
   --font-ui: 'Barlow Semi Condensed', system-ui, sans-serif;
   --font-display: 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif;
-  --font-prose: 'Source Serif 4 Variable', Georgia, serif;
   --font-code: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
   --fs-12: 0.75rem;
@@ -31,7 +29,7 @@
   --fs-36: 2.25rem;
   --fs-48: 3rem;
 
-  --header-h: 112px;
+  --header-h: 77px;
   --drawer-w: min(560px, 46vw);
 
   color-scheme: light;
@@ -104,15 +102,15 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
-/* ---- buttons ---- */
+/* ---- buttons: at least 44 px tall (CLAUDE.md section 3) ---- */
 
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 32px;
-  padding: 0 12px;
+  min-height: 44px;
+  padding: 0 14px;
   border: 1px solid var(--ink);
   border-radius: 4px;
   background: var(--ink);
@@ -145,12 +143,6 @@ textarea {
   border-color: var(--graphite);
 }
 
-.btn--small {
-  height: 26px;
-  padding: 0 9px;
-  font-size: var(--fs-12);
-}
-
 /* ---- panels ---- */
 
 .panel {
@@ -178,57 +170,11 @@ textarea {
   font-size: var(--fs-14);
 }
 
-/* A small, quiet label for provenance and other metadata. */
-.tag {
-  display: inline-flex;
-  align-items: center;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 3px;
-  background: var(--paper);
-  color: var(--graphite);
-  font-size: var(--fs-12);
-  font-weight: 600;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-/* Words written by Amazon Bedrock. */
-.prose {
-  font-family: var(--font-prose);
-  font-optical-sizing: auto;
-  line-height: 1.5;
-}
-
 .empty {
   padding: 24px 16px;
   color: var(--graphite);
   font-size: var(--fs-14);
   max-width: 52ch;
-}
-
-.error-text {
-  color: var(--triage-urgent);
-  font-weight: 600;
-  font-size: var(--fs-14);
-}
-
-.link-id {
-  padding: 0 3px;
-  border: 0;
-  border-radius: 3px;
-  background: none;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  text-decoration: underline;
-  text-decoration-color: var(--rule-strong);
-  text-underline-offset: 3px;
-  cursor: pointer;
-}
-
-.link-id:hover {
-  text-decoration-color: var(--ink);
-  background: var(--select);
 }
 
 @media (prefers-reduced-motion: reduce) {

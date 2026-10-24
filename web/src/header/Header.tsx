@@ -1,235 +1,105 @@
-// W02: outage identity, the demo clock beside real time, counters, start and end,
-// and the zone strip with Brief me. The header turns ink while an outage is active.
+// Zone, the time now, the counts, and the one Start outage button. The header turns
+// ink once calls have started: the room is in incident mode.
 import { useState } from 'react'
-import { api, ApiError } from '../api/client'
-import type { OutageMeta, OutageSummary } from '../api/types'
-import { config, ZONES } from '../config'
-import { clock, span } from '../lib/time'
+import { startOutage, type Resident, type Status } from '../api'
+import { config, ZONE } from '../config'
+import { clock } from '../lib/time'
 import { useNow } from '../lib/useNow'
 import { Glyph } from '../ui/Glyph'
 import './Header.css'
 
 interface Props {
-  outage: OutageMeta | null
-  summary: OutageSummary | null
-  simNow: number | null
-  loading: boolean
-  apiError: Error | null
+  rows: Resident[]
+  loadError: Error | null
   mapUnavailable: boolean
-  onOutageChanged: () => void
-  onBrief: () => void
+  message: string | null
+  onMessage: (message: string | null) => void
+  onStarted: () => void
 }
 
-export function Header({ outage, summary, simNow, loading, apiError, mapUnavailable, onOutageChanged, onBrief }: Props) {
+export function Header({ rows, loadError, mapUnavailable, message, onMessage, onStarted }: Props) {
   const now = useNow(1000)
-  const active = outage?.status === 'ACTIVE'
+  const [starting, setStarting] = useState(false)
+  const active = rows.some((r) => r.status !== 'NOT_CALLED' || r.missed_calls > 0)
+  const count = (status: Status) => rows.filter((r) => r.status === status).length
+  const [time, meridiem] = clock(now).split(' ')
 
-  return (
-    <header className={`hdr${active ? ' hdr--active' : ''}`}>
-      <div className="hdr-main">
-        <div className="brand">
-          <span className="brand-name">CareLine</span>
-          <span className="brand-org">Santa Clara County Public Health</span>
-        </div>
-
-        {active && outage ? (
-          <>
-            <div className="hdr-outage">
-              <h1 className="hdr-outage-name">
-                Outage in {outage.zone_id}, {outage.zone_name}
-              </h1>
-              <p className="hdr-outage-meta">
-                Started {clock(outage.started_at)}
-                {simNow !== null && <>, {span((simNow - Date.parse(outage.started_at)) / 60000)} ago on the demo clock</>}
-              </p>
-            </div>
-
-            <div className="hdr-clock">
-              <span className="hdr-clock-time num" aria-label="Demo clock">
-                {simNow === null ? '--:--' : clock(simNow)}
-              </span>
-              <span className="hdr-clock-caption">
-                Demo clock, {outage.time_scale}× speed
-                <br />
-                Real time <span className="num">{clock(now)}</span>
-              </span>
-            </div>
-
-            <Counters summary={summary} />
-          </>
-        ) : (
-          <IdleStart loading={loading} apiError={apiError} onStarted={onOutageChanged} now={now} />
-        )}
-
-        <div className="hdr-flags">
-          {config.useMocks && <span className="hdr-flag">Mock data</span>}
-          {mapUnavailable && <span className="hdr-flag hdr-flag--warn">Map unavailable</span>}
-          {active && outage && <EndOutage outage={outage} onEnded={onOutageChanged} />}
-        </div>
-      </div>
-
-      {active && outage && <ZoneStrip outage={outage} summary={summary} onBrief={onBrief} />}
-    </header>
-  )
-}
-
-function Counters({ summary }: { summary: OutageSummary | null }) {
-  const t = summary?.totals
-  const v = (n: number | undefined) => (n === undefined ? '–' : n)
-  return (
-    <dl className="hdr-counts">
-      <div>
-        <dt>Called</dt>
-        <dd className="num">
-          {v(t?.called)}
-          <span className="hdr-count-of"> of {v(t?.residents)}</span>
-        </dd>
-      </div>
-      <div>
-        <dt>Reached</dt>
-        <dd className="num">{v(t?.reached)}</dd>
-      </div>
-      <div>
-        <dt>
-          <Glyph group="URGENT" /> Urgent
-        </dt>
-        <dd className="num">{v(t?.urgent)}</dd>
-      </div>
-      <div>
-        <dt>
-          <Glyph group="UNREACHED" /> Unreached
-        </dt>
-        <dd className="num">{v(t?.unreached)}</dd>
-      </div>
-    </dl>
-  )
-}
-
-function IdleStart({ loading, apiError, onStarted, now }: { loading: boolean; apiError: Error | null; onStarted: () => void; now: number }) {
-  const [zoneId, setZoneId] = useState('Z2')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const start = async () => {
-    setBusy(true)
-    setError(null)
+  async function onStartOutage() {
+    setStarting(true)
+    onMessage(null)
     try {
-      await api.startOutage(zoneId)
+      const result = await startOutage(ZONE)
+      const n = result.calling.length
+      const parts = [n ? `Calling ${n} ${n === 1 ? 'person' : 'people'} now.` : 'Nobody could be called.']
+      if (result.waiting.length) parts.push(`${result.waiting.length} more waiting for a free line.`)
+      if (result.errors.length) parts.push(`${result.errors.length} call(s) failed to start.`)
+      onMessage(parts.join(' '))
       onStarted()
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'The outage did not start. Check the API connection and try again.')
+    } catch (e) {
+      onMessage(e instanceof Error ? e.message : String(e))
     } finally {
-      setBusy(false)
+      setStarting(false)
     }
   }
 
   return (
-    <div className="hdr-idle">
-      <div className="hdr-idle-text">
-        <h1 className="hdr-outage-name">{loading ? 'Connecting' : 'No active outage'}</h1>
-        <p className="hdr-outage-meta">
-          {apiError
-            ? `Can't reach the CareLine API: ${apiError.message}`
-            : 'Starting one calls every registered resident in the zone, highest medical risk first.'}
+    <header className={`hdr${active ? ' hdr--active' : ''}`}>
+      <div className="brand">
+        <span className="brand-name">CareCall</span>
+        <span className="brand-org">County Public Health</span>
+      </div>
+
+      <div className="hdr-outage">
+        <h1 className="hdr-outage-name">{active ? `Outage in Zone ${ZONE}` : `Zone ${ZONE}`}</h1>
+        <p className="hdr-outage-meta" role="status" aria-live="polite">
+          {loadError
+            ? `Can't reach the CareCall API: ${loadError.message}`
+            : (message ?? (active ? 'Calling 4 people at a time, highest risk first.' : 'Start outage calls everyone in the zone, 4 at a time.'))}
         </p>
       </div>
-      <form
-        className="hdr-start"
-        onSubmit={(e) => {
-          e.preventDefault()
-          start()
-        }}
-      >
-        <label className="sr-only" htmlFor="zone-pick">
-          Zone
-        </label>
-        <select id="zone-pick" className="hdr-select" value={zoneId} onChange={(e) => setZoneId(e.target.value)}>
-          {ZONES.map((z) => (
-            <option key={z.zone_id} value={z.zone_id}>
-              {z.zone_id} {z.zone_name}
-            </option>
-          ))}
-        </select>
-        <button className="btn" type="submit" disabled={busy || loading}>
-          {busy ? 'Starting outage' : 'Start outage'}
+
+      <div className="hdr-clock">
+        <span className="hdr-clock-label">Now</span>
+        <span className="hdr-clock-time num">{time}</span>
+        <span className="hdr-clock-meridiem">{meridiem}</span>
+      </div>
+
+      <dl className="hdr-counts">
+        <div>
+          <dt>Calling now</dt>
+          <dd className="num">{count('CALLING')}</dd>
+        </div>
+        <div>
+          <dt>
+            <Glyph status="HELP_NOW" /> Help now
+          </dt>
+          <dd className="num">{count('HELP_NOW')}</dd>
+        </div>
+        <div>
+          <dt>
+            <Glyph status="HELP_SOON" /> Help soon
+          </dt>
+          <dd className="num">{count('HELP_SOON')}</dd>
+        </div>
+        <div>
+          <dt>
+            <Glyph status="PERSON_CHECK" /> To check
+          </dt>
+          <dd className="num">{count('PERSON_CHECK')}</dd>
+        </div>
+        <div>
+          <dt>Not called yet</dt>
+          <dd className="num">{count('NOT_CALLED')}</dd>
+        </div>
+      </dl>
+
+      <div className="hdr-flags">
+        {config.useMocks && <span className="hdr-flag">Mock data</span>}
+        {mapUnavailable && <span className="hdr-flag hdr-flag--warn">Map unavailable</span>}
+        <button className={`btn btn--start${active ? ' btn--light' : ''}`} onClick={onStartOutage} disabled={starting}>
+          {starting ? 'Starting…' : 'Start outage'}
         </button>
-      </form>
-      {error && <p className="hdr-error" role="alert">{error}</p>}
-      <p className="hdr-idle-clock">
-        Real time <span className="num">{clock(now)}</span>
-      </p>
-    </div>
-  )
-}
-
-function EndOutage({ outage, onEnded }: { outage: OutageMeta; onEnded: () => void }) {
-  const [confirming, setConfirming] = useState(false)
-  const [busy, setBusy] = useState(false)
-
-  if (!confirming) {
-    return (
-      <button className="btn btn--on-dark" onClick={() => setConfirming(true)}>
-        End outage
-      </button>
-    )
-  }
-  return (
-    <div className="hdr-confirm" role="group" aria-label="Confirm end outage">
-      <span>Stops every pending call and recheck in {outage.zone_name}.</span>
-      <button
-        className="btn btn--light"
-        disabled={busy}
-        onClick={async () => {
-          setBusy(true)
-          try {
-            await api.endOutage(outage.outage_id)
-            onEnded()
-          } finally {
-            setBusy(false)
-            setConfirming(false)
-          }
-        }}
-      >
-        End outage
-      </button>
-      <button className="btn btn--on-dark" onClick={() => setConfirming(false)}>
-        Keep running
-      </button>
-    </div>
-  )
-}
-
-function ZoneStrip({ outage, summary, onBrief }: { outage: OutageMeta; summary: OutageSummary | null; onBrief: () => void }) {
-  return (
-    <nav className="zones" aria-label="Zones">
-      <ul className="zones-list">
-        {ZONES.map((z) => {
-          const zs = summary?.zones.find((x) => x.zone_id === z.zone_id)
-          const isOutage = z.zone_id === outage.zone_id
-          return (
-            <li key={z.zone_id} className={`zone${isOutage ? ' zone--active' : ''}`} aria-current={isOutage ? 'true' : undefined}>
-              <span className="zone-id">{z.zone_id}</span>
-              <span className="zone-name">{z.zone_name}</span>
-              {isOutage && zs ? (
-                <span className="zone-stats">
-                  <span className="num">{zs.pct_contacted}% reached</span>
-                  <span className="zone-flag num" title={`${zs.urgent} urgent`}>
-                    <Glyph group="URGENT" /> {zs.urgent}
-                  </span>
-                  <span className="zone-flag num" title={`${zs.unreached} unreached`}>
-                    <Glyph group="UNREACHED" /> {zs.unreached}
-                  </span>
-                </span>
-              ) : (
-                <span className="zone-none">{isOutage ? 'Loading' : 'No outage'}</span>
-              )}
-            </li>
-          )
-        })}
-      </ul>
-      <button className="btn btn--light" onClick={onBrief}>
-        Brief me on {outage.zone_id}
-      </button>
-    </nav>
+      </div>
+    </header>
   )
 }

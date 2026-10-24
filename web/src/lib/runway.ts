@@ -1,8 +1,7 @@
-import type { PriorityRow } from '../api/types'
+import type { Resident } from '../api'
 
-/** Battery minutes left on the demo clock, ticking locally between polls. */
-export function minutesLeft(row: PriorityRow, simNow: number | null): number | null {
-  if (row.battery_deadline_sim === null) return null
-  if (simNow === null) return row.minutes_to_battery_deadline
-  return (Date.parse(row.battery_deadline_sim) - simNow) / 60000
+/** Minutes until the person's backup runs out, ticking locally between polls. */
+export function minutesLeft(r: Resident, now: number): number | null {
+  if (!r.runs_out_at) return null
+  return (Date.parse(r.runs_out_at) - now) / 60000
 }
