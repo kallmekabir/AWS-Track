@@ -1,3 +1,5 @@
+# Production reference only. Not deployable in the workshop account (no IAM role creation).
+# Historical snapshot: handlers and packaging must be restored before production use.
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: CareCall backend - dashboard API and Lex code hook for 4-at-a-time check-in calls

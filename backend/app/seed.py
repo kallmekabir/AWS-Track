@@ -96,7 +96,7 @@ def seed_residents(path: Path = LOCAL_SEED_PATH) -> list[Resident]:
 
 def main() -> int:
     try:
-        from dotenv import load_dotenv  # dev-only package; Lambda never runs this file
+        from dotenv import load_dotenv  # also installed with the server runtime
         load_dotenv(BACKEND_DIR / ".env")
     except ImportError:
         pass

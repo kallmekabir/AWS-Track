@@ -127,7 +127,7 @@ class ResidentOut(Resident):
 class CheckInIn(BaseModel):
     """A call result posted by hand (POST /residents/{id}/checkins), for testing the dashboard.
 
-    Real calls save their result from lex_hook instead.
+    Real calls save their result through call_results.finish_call instead.
     """
     status: Status = Field(examples=["HELP_SOON"])
     rule_id: str = Field(examples=["R3"])
