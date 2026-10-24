@@ -119,3 +119,12 @@ Status: TODO · IN_PROGRESS · DONE · WAITING · BLOCKED · SKIPPED
 - Credentials: temporary WSParticipant session creds pushed to /etc/careline/credentials (mode 0600, approved documented exception). Re-run scripts/push_creds.sh when they expire.
 - Guardrail PII limitation: medical-advice denials and grounding work and are verified; however PII ANONYMIZE (and a regex phone filter) do NOT surface via `apply-guardrail --source INPUT` (returns action=NONE, 0 sensitiveInformationPolicyUnits) even with outputScope=FULL. ANONYMIZE applies on the model I/O path, not the standalone INPUT probe. Primary PII control remains the app's regex redaction in lex_hook (per plan; Comprehend step was cut). Recorded as known limitation, not a blocker.
 - HELD: DynamoDB tables (awaiting team decision). SKIPPED (no IAM roles): all Lambda/Step Functions/API Gateway/EventBridge-target/Knowledge Base tasks; SAM template.yaml not deployed.
+
+### Hardening phase report (23:05 PDT) — steps 1-9 DONE
+- P1.1-P1.4 Connect: adopted Kabir's instance 4ade3c42, flow "CareCall test call" 40ac3787 (TEST only - must switch to real check-in flow; DRY_RUN stays 1 until confirmed), DID stored as SecureString. CONNECT_* in backend.env + SSM /careline/connect/*.
+- Step 2 basic auth: CloudFront Functions careline-auth (default) + careline-auth-strip (/api/*, auth+strip). Verified 401 without / 200 with creds on both / and /api/health. Real credential only in deployed functions; repo keeps placeholder.
+- Step 3 Bedrock: extract model + guardrail id/v2 in backend.env; Converse from the instance returned OK (instance creds work).
+- Step 4 dashboard: web/ built with VITE_API_URL=.../api, deployed to S3+CloudFront; real app loads behind auth; /api/queue + /api/residents polls 200.
+- Step 5 deploy_core.sh: tested end to end (pull+pip+restart, service active). Step 6: CloudWatch dashboard "CareLine" (Bedrock/guardrail/DynamoDB/Connect widgets). Step 7: budget careline-hackathon $25, 50/80% to himanshu.jain@sjsu.edu.
+- Step 8 smoke.sh: ALL PASS (health+auth, both tables, guardrail intervene, Connect ACTIVE, dashboard). Step 9: docs/infra/HANDOFF.md + scripts/teardown.sh (NOT run; gate G1).
+- Note: old careline-strip-api CloudFront Function orphaned (superseded by careline-auth-strip); left in place (delete is gate G1), listed in teardown.sh.
