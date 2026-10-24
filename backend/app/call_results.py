@@ -57,15 +57,45 @@ def contact_lens_segments(contact_id: str) -> list[str]:
     return [c for _, c in sorted(turns, key=lambda x: x[0])]
 
 
-def fetch(contact_id: str) -> dict:
-    """Reuse the dialer's Connect client and its standard retry configuration."""
+# Varied canned answers per demo persona, so a DRY_RUN outage shows the full spread of
+# triage levels (not the same result for everyone). Keyed by resident id; falls back to a
+# rotating set for any other id. Real calls never use these.
+_DRY_RUN_ANSWERS = {
+    "r-001": {"a1": "Yes", "a2": "It's off and the backup didn't kick in", "a3": "none",
+              "a4": "zero, it's dead", "a5": "no"},                                  # R1 Help now
+    "r-002": {"a1": "Yes", "a2": "Yes, on the tank", "a3": "one tank",
+              "a4": "about two hours", "a5": "no"},                                   # R2 Help now (far hospital)
+    "r-003": {"a1": "Yes", "a2": "Yes, on the tank", "a3": "one tank",
+              "a4": "about two hours", "a5": "I can't drive to get more"},            # R3 Help soon
+    "r-004": {"a1": "I'm fine", "a2": "Yes it's working", "a3": "three tanks",
+              "a4": "around nine hours", "a5": "a place to charge would help"},       # R5 Needs supplies
+    "r-005": {"a1": "I can't breathe well", "a2": "", "a3": "", "a4": "", "a5": ""},  # R0 Help now (emergency)
+    "r-006": {"a1": "I think so", "a2": "Uh, it's on something", "a3": "not sure",
+              "a4": "a while I guess", "a5": "I don't know"},                         # R4 A person must check
+    "r-007": {"a1": "Yes", "a2": "Yes", "a3": "two batteries",
+              "a4": "about three hours", "a5": "no"},                                 # R3 Help soon
+    "r-008": {"a1": "Yes all good", "a2": "Yes", "a3": "plenty, five",
+              "a4": "about ten hours", "a5": "nothing needed"},                       # R6 OK for now
+}
+_DRY_RUN_FALLBACK = [
+    {"a1": "Yes", "a2": "Yes", "a3": "two tanks", "a4": "about five hours", "a5": "some food"},
+    {"a1": "Yes", "a2": "No, it's off", "a3": "one", "a4": "an hour", "a5": "a ride"},
+    {"a1": "No, I'm not safe", "a2": "unsure", "a3": "", "a4": "", "a5": ""},
+]
+
+
+def fetch(contact_id: str, resident_id: str = None) -> dict:
+    """Reuse the dialer's Connect client and its standard retry configuration.
+
+    In DRY_RUN, return a varied answer set per resident (so a demo outage shows a realistic
+    spread of triage levels), instead of one canned answer for everyone."""
     if calling.DRY_RUN:
-        return {
-            "answered": "yes", "intent": "CheckIn",
-            "a1": "Yes, I'm safe", "a2": "My device is working",
-            "a3": "Two full backups", "a4": "About four hours",
-            "a5": "I could use help with groceries",
-        }
+        base = {"answered": "yes", "intent": "CheckIn"}
+        if resident_id in _DRY_RUN_ANSWERS:
+            return {**base, **_DRY_RUN_ANSWERS[resident_id]}
+        # any other id: rotate through the fallback sets deterministically
+        idx = sum(ord(c) for c in (resident_id or contact_id or "")) % len(_DRY_RUN_FALLBACK)
+        return {**base, **_DRY_RUN_FALLBACK[idx]}
     return calling._connect().get_contact_attributes(
         InstanceId=calling.INSTANCE_ID, InitialContactId=contact_id)["Attributes"]
 
@@ -109,7 +139,7 @@ def finish_call(resident: Resident) -> bool:
     """
     if not resident.contact_id:
         return False  # start_call has claimed the resident but has not finished dialing
-    attrs = fetch(resident.contact_id)
+    attrs = fetch(resident.contact_id, resident.id)
     transcript = to_transcript(attrs)
     source = "call"
 
