@@ -127,7 +127,7 @@ function residentAt(p: MockPerson, t: number): Resident {
   }
 
   if (t < last.end) {
-    // On the call: ringing, then one answer every few seconds (as lex_hook saves them).
+    // On the call: ringing, then one answer every few seconds (simulated progress for mock rehearsals).
     const answered = last.answered ? Math.min(5, Math.max(0, Math.floor((t - last.start - RING_S) / QUESTION_S))) : 0
     const asking = last.answered && t - last.start >= RING_S ? Math.min(5, answered + 1) : 0
     return {

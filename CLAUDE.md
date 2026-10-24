@@ -67,18 +67,16 @@ Priority order for AWS: **1. Amazon Connect (calls) → 2. Amazon Bedrock (under
 | Tool | Use it for | Do not use it for |
 | --- | --- | --- |
 | Amazon Connect | Placing calls (`StartOutboundVoiceContact`) and running the call script (contact flow) | Ranking or storing data |
-| Amazon Lex V2 | Hearing each answer and handing the text to `lex_hook` | Understanding meaning (that's Bedrock) |
+| Amazon Lex V2 | Collecting A1–A5 in CheckIn slots; Connect persists them as contact attributes | Understanding meaning (that's Bedrock) |
 | Amazon Bedrock (Amazon Nova) | Turning a call transcript into facts (Converse API, tool use, temperature 0). Optional: a short zone summary for Jane | Deciding levels or who is safe |
 | Amazon Location Service | Address → map position (`geo-places` `geocode`); drive time from suppliers to residents (`geo-routes` `calculate_route_matrix`); map tiles on the dashboard (`geo-maps`) | Anything that isn't about places |
-| AWS Lambda | Running our Python (`api`, `lex_hook`) | Long-running jobs |
-| Amazon API Gateway | Giving the FastAPI app a web address | Business logic |
+| Amazon EC2 | Long-lived FastAPI server and background call checker on port 8000 | Collecting voice input |
+| Amazon CloudFront | Serving the dashboard and proxying `/api/...` to the backend with `/api` stripped | Business logic |
 | Amazon DynamoDB | Residents, call results, suppliers | Files or images |
 | Amazon SNS | The "Help now" alert email | Talking to residents |
-| AWS Amplify Hosting | Hosting the built dashboard (`web/dist/`) | The backend |
-| FastAPI + Pydantic | The backend API and checking request shapes | Lex events (`lex_hook` is a plain handler) |
+| FastAPI + Pydantic | The backend API, request validation and a lifespan task for call completion | Speech recognition |
 | Vite + React | The dashboard: React draws it, Vite runs and packages it | Backend logic |
 | boto3 | Talking to AWS from Python | — |
-| AWS SAM | Building and deploying both Lambdas, the HTTP API and the DynamoDB tables (`backend/template.yaml`) | Connect, Lex and the contact flow (console steps in `connect/SETUP.md`) |
 
 ---
 
@@ -88,7 +86,7 @@ Priority order for AWS: **1. Amazon Connect (calls) → 2. Amazon Bedrock (under
 
 Using Bedrock is the entry ticket for this track, so it must be central and visible in the demo.
 
-- **Where:** `app/understand.py`, called once per finished call from `lex_hook`.
+- **Where:** Phase 2 replaces the `extract_facts(transcript)` placeholder in `app/call_results.py`, optionally delegating to `app/understand.py`. It returns `None` today.
 - **How:** the Converse API with a forced tool (`record_checkin`), so Bedrock must return JSON in our exact shape. Temperature 0.
 - **Model:** an Amazon Nova text model. Read the ID from the `BEDROCK_MODEL_ID` environment variable; never hard-code it.
 - **Output shape:** defined in `docs/RANKING.md` ("What Bedrock returns").
@@ -109,21 +107,22 @@ Using Bedrock is the entry ticket for this track, so it must be central and visi
 1. `POST /outages` runs **round 1 ranking** (`docs/RANKING.md`) to put the zone's residents in calling order.
 2. `app/calling.py` takes the first **4** people (`MAX_LINES=4`) and calls `connect.start_outbound_voice_contact` once per person, back to back. The calls start within a second of each other, so all 4 phones ring together. It passes `residentId` as a contact attribute so later steps know who is on the line.
 3. **Amazon Connect** rings the phone and runs our contact flow, which hands the call to the **Lex bot**.
-4. For each answer, Lex calls **`lex_hook`**. It saves the answer and asks the next of the 5 questions. After the last question it runs Bedrock → Location drive time → round 2 ranking → saves the result → sends an SNS alert if the level is "Help now".
-5. When a call ends (answered, or no answer after `NO_ANSWER_SECONDS`), `calling.dial_next(zone)` starts the next person, so 4 lines stay busy until everyone is reached.
+4. **Lex CheckIn** collects five required slots A1–A5; Connect copies `$.Lex.IntentName` and `$.Lex.Slots.A1..A5` to user-defined `intent` and `a1..a5` attributes. No intent or alias has a code hook. `app/script.py` holds the unchanged script. The FreeFormInput first-reply, emergency-switch and partial-hang-up limits are documented in `connect/SETUP.md`; console/phone acceptance remains open.
+5. After `DescribeContact` reports a disconnect, **`app/call_results.py`** fetches contact attributes, saves the transcript and a check-in, then calls `dial_next`. Emergency intent or emergency phrases in any answer → HELP_NOW / R0; five answers → PERSON_CHECK waiting for ranking; some answers → PERSON_CHECK; no answer → missed-call rules. Phase 2 Bedrock goes in `extract_facts`.
+6. When a call ends (answered, or the start-time backstop of `NO_ANSWER_SECONDS` expires), `calling.dial_next(zone)` starts the next person, so 4 lines stay busy until everyone is reached.
 
 **Rules for `app/calling.py`:**
 
 - **Refuse to call anyone whose `allow_call` is false, or whose number is not a teammate's number in Parameter Store (`PHONES_SSM_PATH`, see `app/phones.py`) or on `DIALER_ALLOW_LIST`.** No exceptions. This keeps us to consenting teammates only. An empty allow-list means no real calls at all.
-- Never have more than `MAX_LINES` calls marked `CALLING` at once. Status changes go through `store.transition()`, a conditional write, so two Lambdas can never both handle the end of the same call.
+- Never have more than `MAX_LINES` calls marked `CALLING` at once. Status changes go through `store.transition()`, a conditional write, with a contact ID guard, so concurrent checkers cannot save the same result twice.
 - Save the `ContactId` Connect returns on the resident, with the time the call started.
 - Throttling: the Connect client retries a throttled request once (boto3 standard retry mode, 2 attempts), and a fresh `ClientToken` per call makes that retry safe (never two calls).
-- **No answer:** `check_calls()` runs on each dashboard poll. It asks Connect's `DescribeContact` whether the call has ended, and a call with no new answer after `NO_ANSWER_SECONDS` also counts as ended. An ended call with no answers is a missed call; two missed calls → rule NA in `docs/RANKING.md`. (Connect contact events through EventBridge would be the push-based version. Ask me before adding them.)
+- **No answer:** `check_calls()` runs every `CHECK_EVERY_SECONDS` (5 seconds) from the FastAPI lifespan task, plus dashboard polls. It uses Connect's `DescribeContact.DisconnectTimestamp` and a `NO_ANSWER_SECONDS=300` backstop measured from `call_started_at`. A lock prevents overlapping checks; no per-turn updates arrive. An ended call with no answers is a missed call; two missed calls → rule NA in `docs/RANKING.md`. (Connect contact events through EventBridge would be the push-based version. Ask me before adding them.)
 - The contact flow must use the Lex bot's **`live` alias**, never TestBotAlias, which allows only 2 voice calls at once.
 - API responses mask phone numbers (`ResidentOut`), because the deployed URL is public.
 - Do not use Amazon Connect outbound *campaigns*. Campaign calls are blocked by default and need an AWS quota request. Plain `StartOutboundVoiceContact` does what we need.
 
-**Where we are:** once the 4-at-a-time calls work end to end (phones ring, answers reach `lex_hook`), the backend is about **halfway done**. The other half is turning the answers into facts with Bedrock and ranking them (`app/understand.py`, `app/ranking.py`, `app/location.py`).
+**Where we are:** once the 4-at-a-time calls work end to end (phones ring, slot answers appear in contact attributes and `/queue`), the backend is about **halfway done**. The other half is turning the answers into facts with Bedrock and ranking them (`app/understand.py`, `app/ranking.py`, `app/location.py`).
 
 ---
 
@@ -142,10 +141,10 @@ The full spec is in `docs/RANKING.md`; this is the summary.
 
 - Only call phones with `allow_call: true`. All data is made up.
 - Bedrock extracts; rules decide. Show the rule ID with every level.
-- The call script only asks questions. On any emergency words: tell the person to hang up and call 911, and mark them "Help now".
+- The call script only asks questions. Emergency entry intent tells the person to hang up and call 911. Emergency words in collected answers mark them "Help now" after disconnect; FreeFormInput cannot switch intents mid-slot.
 - No diagnoses or medication names stored. Transcripts are short and for the demo only.
 - No secrets in git. AWS IDs and keys live in `.env` files, which are git-ignored. Keep `.env.example` up to date with variable names only.
-- CORS: allow `http://localhost:5173` and our Amplify address only.
+- CORS: allow `http://localhost:5173` and our CloudFront address only.
 
 ---
 
@@ -159,13 +158,13 @@ uvicorn app.main:app --reload --env-file .env   # http://localhost:8000/docs
 python -m unittest discover -s tests -t .        # backend tests, no AWS needed
 python -m app.seed                               # write the demo roster to DynamoDB
 
-# Deploy the backend: from backend/ (full order in connect/SETUP.md)
-sam build && sam deploy --guided --profile carecall --region us-east-1
-sam logs -n LexHookFunction --stack-name carecall-backend --profile carecall --tail
+# EC2 backend: from backend/, with /etc/careline/backend.env loaded by the service manager
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 # Dashboard: from web/
 npm run dev                              # http://localhost:5173
-npm run build                            # writes web/dist/ for Amplify
+npm run build                            # writes web/dist/ for CloudFront hosting
 
 # Ranking tests (once eval/ exists): from repo root
 python eval/run.py
@@ -177,16 +176,18 @@ curl -X POST http://localhost:8000/residents/r-001/call      # ring one phone
 curl -X POST "http://localhost:8000/demo/reset?zone=A"       # back to "not called yet"
 ```
 
-Set `CONNECT_DRY_RUN=1` in `backend/.env` to pretend to call (fake contact IDs, no phone rings).
+Set `CONNECT_DRY_RUN=1` in `backend/.env` to fake contacts and full five-answer results after five seconds. Consent is still required (`allow_call=true`); no phones ring.
 
 ## 10. Environment variables (`backend/.env`)
 
-Copy `backend/.env.example`; it explains each variable. On AWS, `template.yaml` sets the same variables on both Lambdas.
+Copy `backend/.env.example` locally. On EC2, Himanshu supplies `/etc/careline/backend.env` with these keys and creates the DynamoDB tables: Residents PK `id`; Checkins PK `resident_id`, SK `at`. The service manager loads that environment or uvicorn uses `--env-file /etc/careline/backend.env`.
+
+**Why no Lambda:** the workshop account blocks IAM role creation. Do not deploy the historical `docs/reference/template.lambda.yaml`; its removed handlers and packaging would need restoration for production. Run a single uvicorn worker on EC2. CloudFront serves `/api/...` and strips `/api` before forwarding to port 8000.
 
 ```text
 AWS_PROFILE=carecall
 AWS_DEFAULT_REGION=us-east-1        # one region for everything; must match the Connect instance
-RESIDENTS_TABLE=                    # from the sam deploy outputs; empty = in-memory demo data
+RESIDENTS_TABLE=                    # created by Himanshu; empty = in-memory demo data
 CHECKINS_TABLE=
 CONNECT_INSTANCE_ID=
 CONNECT_CONTACT_FLOW_ID=
@@ -196,21 +197,21 @@ PHONES_SSM_PATH=/carecall/phones    # teammates' numbers: one SecureString per p
 DIALER_ALLOW_LIST=                  # optional extra allowed numbers; prefer Parameter Store
 CONNECT_DRY_RUN=                    # 1 = fake calls
 MAX_LINES=4
-NO_ANSWER_SECONDS=120
-ALLOWED_ORIGINS=http://localhost:5173
+NO_ANSWER_SECONDS=300
+ALLOWED_ORIGINS=https://<cloudfront>,http://localhost:5173
 BEDROCK_MODEL_ID=                   # Phase 2: an Amazon Nova text model ID from the Bedrock console
 SNS_TOPIC_ARN=                      # Phase 2
 ```
 
-Use `AWS_DEFAULT_REGION`, not `AWS_REGION`: boto3 on your laptop only reads `AWS_DEFAULT_REGION` (Lambda sets the region by itself).
+Use `AWS_DEFAULT_REGION` for boto3. `AWS_PROFILE=carecall` is for local development; omit it on EC2 if AWS access comes from another mechanism.
 
-Dashboard (`web/.env.local`, git-ignored): `VITE_API_URL`, `VITE_LOCATION_API_KEY`.
+Dashboard (`web/.env.local`, git-ignored): `VITE_API_URL=https://<cloudfront>/api` (default `http://localhost:8000`), `VITE_LOCATION_API_KEY`. Rebuild Vite after changing the API URL.
 
 ## 11. Project layout
 
 ```text
 backend/
-  app/main.py          FastAPI routes (the api Lambda: handler app.main.handler)
+  app/main.py          FastAPI routes and the background checker lifespan task
   app/models.py        Pydantic data shapes
   app/store.py         Storage: DynamoDB when RESIDENTS_TABLE is set, else in memory (same functions)
   app/seed.py          Demo roster + teammates' phones (Parameter Store, or git-ignored seed.local.json)
@@ -219,10 +220,11 @@ backend/
   app/understand.py    Bedrock: transcript → facts                              (Phase 2)
   app/ranking.py       Round 1 (done) and round 2 (Phase 2) rules, no AWS calls inside
   app/location.py      Amazon Location: geocode, drive time                     (Phase 2)
-  lambdas/lex_hook.py  Lex code hook: asks the questions, saves each answer, then (Phase 2) understand → rank
+  app/script.py        Fixed questions, closing text and emergency phrases
+  app/call_results.py  Connect attributes → transcript → status; extract_facts is the Phase 2 hook
   tests/               unittest tests with a fake Connect client
-  template.yaml        SAM: both Lambdas, the HTTP API, the DynamoDB tables
-connect/SETUP.md       Connect instance, Lex bot, contact flow, deploy, seed (in order)
+connect/SETUP.md       Connect instance, Lex slots, contact attributes, EC2 hosting and acceptance
+docs/reference/template.lambda.yaml  Historical production reference; not workshop deployable
 web/src/api.ts         Every dashboard → backend call
 web/src/App.tsx        The one-screen dashboard
 eval/run.py            Test transcripts through understand + ranking
