@@ -31,6 +31,108 @@
   padding-right: var(--drawer-w);
 }
 
+/* Desktop with a map: the map fills the work area and the list sits over its left
+   side. Picking someone slides the list left to a thin strip so the map and the
+   hospital route get the room; hovering or focusing the strip brings it back. */
+.list-dock {
+  display: contents;
+}
+
+.list-handle {
+  display: none;
+}
+
+@media (min-width: 1001px) {
+  .work:not(.work--no-map) {
+    --list-w: max(660px, 47%);
+    --peek: 36px;            /* keep in step with PEEK_PX in map/MapPanel.tsx */
+    display: block;
+  }
+
+  .work:not(.work--no-map) .map-panel {
+    position: absolute;
+    inset: 0;
+  }
+
+  .work:not(.work--no-map) .list-dock {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 6;
+    display: block;
+    width: var(--list-w);
+    transition: transform 0.45s cubic-bezier(0.2, 0.7, 0.2, 1), box-shadow 0.45s;
+  }
+
+  .work:not(.work--no-map) .list-dock .plist {
+    height: 100%;
+  }
+
+  /* Collapse after a short pause, so brushing past the strip doesn't flicker it. */
+  .work--drawer:not(.work--no-map) .list-dock {
+    transform: translateX(calc(var(--peek) - 100%));
+    transition-delay: 0.2s;
+  }
+
+  .work--drawer:not(.work--no-map) .list-dock.is-peeking {
+    transform: none;
+    box-shadow: 12px 0 28px rgba(20, 32, 44, 0.14);
+    transition-delay: 0s;
+  }
+
+  .work--drawer:not(.work--no-map) .list-handle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    z-index: 3;              /* above the table's sticky header */
+    width: var(--peek);
+    padding: 14px 0;
+    border: 0;
+    border-right: 1px solid var(--rule-strong);
+    background: var(--sheet);
+    box-shadow: 4px 0 12px rgba(20, 32, 44, 0.08);
+    color: var(--ink);
+    font: inherit;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+
+  .list-handle > span:first-child {
+    font-size: var(--fs-24);
+    line-height: 1;
+  }
+
+  .list-handle-text {
+    writing-mode: vertical-rl;
+    font-size: var(--fs-12);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .list-handle:hover,
+  .list-handle:focus-visible {
+    background: #f1f4f6;
+  }
+
+  .work--drawer .list-dock.is-peeking .list-handle {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
+@media (min-width: 1001px) and (prefers-reduced-motion: reduce) {
+  .work:not(.work--no-map) .list-dock {
+    transition: none;
+  }
+}
+
 @media (max-width: 640px) {
   .dash-header {
     position: static;

@@ -17,6 +17,9 @@ export function Dashboard() {
   const { selectedId, select } = useSelection()
   const [mapUnavailable, setMapUnavailable] = useState(!config.locationApiKey)
   const [message, setMessage] = useState<string | null>(null)
+  // The list slides out of the map's way while someone is selected. Hovering its strip
+  // brings it back for that selection only, so a new pick slides it away again.
+  const [peekFor, setPeekFor] = useState<string | null>(null)
   const headerRef = useRef<HTMLDivElement>(null)
   const now = useNow(1000)
 
@@ -26,6 +29,8 @@ export function Dashboard() {
   const selectedIndex = rows.findIndex((r) => r.id === selectedId)
   const selected = selectedIndex >= 0 ? rows[selectedIndex] : null
   const { refresh } = queue
+  const peeking = !!selected && peekFor === selected.id
+  const peek = (open: boolean) => setPeekFor(open && selected ? selected.id : null)
 
   // Keep the work area exactly one screen tall under the sticky header.
   useEffect(() => {
@@ -78,7 +83,22 @@ export function Dashboard() {
         className={`work${mapUnavailable ? ' work--no-map' : ''}${selected ? ' work--drawer' : ''}`}
         aria-label="Ranked list and map"
       >
-        <PriorityList rows={rows} now={now} loading={queue.data === undefined && !queue.error} onCallAgain={onCallAgain} />
+        <div
+          className={`list-dock${peeking ? ' is-peeking' : ''}`}
+          onMouseEnter={() => peek(true)}
+          onMouseLeave={() => peek(false)}
+          onFocus={() => peek(true)}
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) peek(false)
+          }}
+        >
+          <PriorityList rows={rows} now={now} loading={queue.data === undefined && !queue.error} onCallAgain={onCallAgain} />
+          <button type="button" className="list-handle" aria-label="Show the ranked list"
+            aria-expanded={peeking} onClick={() => peek(!peeking)}>
+            <span aria-hidden="true">›</span>
+            <span className="list-handle-text">Who to help first</span>
+          </button>
+        </div>
         {!mapUnavailable && (
           <MapPanel rows={rows} hospitals={hospitals.data ?? []} hospitalError={!!hospitals.error}
             drawerOpen={!!selected} onUnavailable={() => setMapUnavailable(true)} />

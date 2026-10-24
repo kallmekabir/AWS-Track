@@ -30,7 +30,7 @@
   --fs-48: 3rem;
 
   --header-h: 77px;
-  --drawer-w: min(560px, 46vw);
+  --drawer-w: min(500px, 40vw);
 
   color-scheme: light;
   font-family: var(--font-ui);

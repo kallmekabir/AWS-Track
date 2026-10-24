@@ -20,6 +20,8 @@ import './MapPanel.css'
 maplibregl.setWorkerUrl(workerUrl)
 
 const SAN_JOSE: [number, number] = [-121.8863, 37.3382]
+/** Width of the list's strip while someone is selected (--peek in layout/Dashboard.css). */
+const PEEK_PX = 36
 
 interface Props {
   rows: Resident[]
@@ -45,6 +47,7 @@ export function MapPanel({ rows, hospitals, hospitalError, drawerOpen, onUnavail
   onUnavailableRef.current = onUnavailable
   const [ready, setReady] = useState(false)
   const [drawerInset, setDrawerInset] = useState(0)
+  const [listInset, setListInset] = useState(0)
   const [route, setRoute] = useState<{ key: string; data?: HospitalRoute; error?: string } | null>(null)
 
   // How much of the map the details panel covers on the right, so the camera and
@@ -54,6 +57,23 @@ export function MapPanel({ rows, hospitals, hospitalError, drawerOpen, onUnavail
     const drawer = document.querySelector<HTMLElement>('.drawer')
     if (!panel || !drawer || window.innerWidth <= 1000) return 0
     return Math.max(0, panel.offsetLeft + panel.offsetWidth - drawer.offsetLeft)
+  }
+
+  // How much of the map the ranked list covers on the left once its slide finishes:
+  // all of it with nobody selected, only its strip while someone is.
+  const measureListInset = (collapsed: boolean) => {
+    const dock = document.querySelector<HTMLElement>('.list-dock')
+    if (!dock || getComputedStyle(dock).position !== 'absolute') return 0 // stacked layout
+    return collapsed ? PEEK_PX : dock.offsetWidth
+  }
+
+  const zoneBounds = useRef<maplibregl.LngLatBounds | null>(null)
+  const fitZone = (duration: number) => {
+    if (!zoneBounds.current) return
+    mapRef.current!.fitBounds(zoneBounds.current, {
+      padding: { top: 80, bottom: 80, right: 80, left: 80 + measureListInset(false) },
+      maxZoom: 15, duration,
+    })
   }
 
   useEffect(() => {
@@ -126,11 +146,23 @@ export function MapPanel({ rows, hospitals, hospitalError, drawerOpen, onUnavail
     const bounds = new maplibregl.LngLatBounds()
     rows.forEach((r) => bounds.extend([r.lng, r.lat]))
     hospitals.forEach((h) => bounds.extend([h.lng, h.lat]))
-    mapRef.current!.fitBounds(bounds, { padding: 80, maxZoom: 15, duration: 0 })
-  }, [ready, rows, hospitals, hospitalError])
+    zoneBounds.current = bounds
+    if (!drawerOpen) fitZone(0)
+  }, [ready, rows, hospitals, hospitalError, drawerOpen])
+
+  // Closing the details slides the list back over the map: bring the whole zone back
+  // into the part of the map left showing.
+  const wasOpen = useRef(drawerOpen)
+  useEffect(() => {
+    if (ready && wasOpen.current && !drawerOpen) fitZone(900)
+    wasOpen.current = drawerOpen
+  }, [ready, drawerOpen])
 
   useLayoutEffect(() => {
-    const update = () => setDrawerInset(drawerOpen ? measureInset() : 0)
+    const update = () => {
+      setDrawerInset(drawerOpen ? measureInset() : 0)
+      setListInset(measureListInset(drawerOpen))
+    }
     update()
     window.addEventListener('resize', update)
     return () => window.removeEventListener('resize', update)
@@ -143,10 +175,12 @@ export function MapPanel({ rows, hospitals, hospitalError, drawerOpen, onUnavail
   useEffect(() => {
     if (!ready || !selectedLngLat) return
     const [lng, lat] = selectedLngLat.split(',').map(Number)
+    // An offset, not padding: easeTo's padding sticks to the map and would be added to
+    // every later fitBounds, zooming the route and the zone far too far out.
     mapRef.current!.easeTo({
       center: [lng, lat],
-      padding: { top: 40, bottom: 60, left: 40, right: 40 + measureInset() },
-      duration: 700,
+      offset: [(measureListInset(true) - measureInset()) / 2, 25],
+      duration: 900,
     })
   }, [ready, selectedLngLat])
 
@@ -170,9 +204,10 @@ export function MapPanel({ rows, hospitals, hospitalError, drawerOpen, onUnavail
       data.geometry.coordinates.forEach((pos) => bounds.extend(pos))
       bounds.extend([data.hospital.lng, data.hospital.lat])
       bounds.extend([lng, lat])
+      // Frame home, route and hospital with room around them, so the drive reads at a glance.
       map.fitBounds(bounds, {
-        padding: { top: 120, bottom: 70, left: 40, right: 40 + measureInset() },
-        maxZoom: 15, duration: 700,
+        padding: { top: 130, bottom: 90, left: 90 + measureListInset(true), right: 90 + measureInset() },
+        maxZoom: 14.5, duration: 1200, essential: true,
       })
     }).catch((error: unknown) => {
       if (!controller.signal.aborted) {
@@ -191,7 +226,7 @@ export function MapPanel({ rows, hospitals, hospitalError, drawerOpen, onUnavail
       <div className="map-canvas" ref={canvasRef} />
 
       {routeKey && (
-        <div className="map-route" style={{ right: drawerInset + 12 }} role="status" aria-live="polite">
+        <div className="map-route" style={{ left: listInset + 12, right: drawerInset + 12 }} role="status" aria-live="polite">
           {currentRoute?.data ? (
             <>
               <strong>{span(currentRoute.data.drive_minutes)} drive to {currentRoute.data.hospital.name}</strong>
@@ -205,7 +240,8 @@ export function MapPanel({ rows, hospitals, hospitalError, drawerOpen, onUnavail
 
       {/* With the details open, the strip of map left is too narrow; the details name the level in words. */}
       {!drawerOpen && (
-        <div className="map-legend" aria-label="Map legend">
+        <div className="map-legend" aria-label="Map legend"
+          style={{ left: listInset + 12, maxWidth: `calc(100% - ${listInset + 160}px)` }}>
           {LEVEL_ORDER.map((s) => (
             <span key={s} className="lg-item">
               <Glyph status={s} size={11} />
