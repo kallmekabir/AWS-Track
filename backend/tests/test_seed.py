@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from boto3.dynamodb.types import TypeSerializer
 
-from app import seed, store
+from app import location, seed, store
 
 
 class CsvSeedTests(unittest.TestCase):
@@ -91,6 +91,28 @@ class CsvSeedTests(unittest.TestCase):
             self.assertEqual(seed.main(["--csv", str(self.path)]), 0)
         save.assert_called_once()
         self.assertEqual(save.call_args.args[0].id, "r-025")
+
+    def test_location_seed_saves_drive_fields(self):
+        self.write_csv(self.row)
+        fields = {"drive_minutes": 12, "nearest_hospital_id": "s-001"}
+        with patch.object(location, "drive_times", return_value=[fields]), \
+             patch.object(store, "save_resident") as save, redirect_stdout(io.StringIO()):
+            self.assertEqual(seed.main(["--csv", str(self.path), "--with-location"]), 0)
+        self.assertEqual(save.call_args.args[0].drive_minutes, 12)
+        self.assertEqual(save.call_args.args[0].nearest_hospital_id, "s-001")
+
+    def test_failed_location_seed_writes_nothing(self):
+        self.write_csv(self.row)
+        with patch.object(location, "drive_times", side_effect=location.LocationError("unavailable")), \
+             patch.object(store, "save_resident") as save, redirect_stderr(io.StringIO()):
+            self.assertEqual(seed.main(["--csv", str(self.path), "--with-location"]), 1)
+        save.assert_not_called()
+
+    def test_location_dry_run_makes_no_aws_calls(self):
+        self.write_csv(self.row)
+        with patch.object(location, "drive_times") as routes, redirect_stdout(io.StringIO()):
+            self.assertEqual(seed.main(["--csv", str(self.path), "--with-location", "--dry-run"]), 0)
+        routes.assert_not_called()
 
     def test_csv_resident_round_trips_through_dynamodb_backend(self):
         self.write_csv(self.row)

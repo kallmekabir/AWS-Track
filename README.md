@@ -122,16 +122,34 @@ curl -X POST "localhost:8000/demo/reset?zone=A"        # everyone back to "Not c
 Stop with `Ctrl+C` in each terminal. After anyone adds or changes a number in Parameter
 Store, restart terminal 1.
 
-### Seed residents from CSV
+### Seed residents
 
-From `backend/`, with the virtual environment active:
+From `backend/`, with the virtual environment active. The seed has two data sources:
+pick one.
+
+| Command | Writes | Phones ring? | Use it for |
+| --- | --- | --- | --- |
+| `python -m app.seed --demo` | The 8-person teammate roster in `app/seed.py` (matches the worked example in `docs/RANKING.md`) | Yes: Daniel, Ruth, Maria and Linh get their teammate's number from Parameter Store with `allow_call=true` | **The calling demo** |
+| `python -m app.seed` | The 10 synthetic residents in `data/Residents_simple.csv` (or `RESIDENTS_CSV`) | No: every row has `allow_call=false` and a made-up number | Showing a realistic registry on the map and list |
+| `python -m app.seed --csv <file>` | Your own CSV | Only rows with `allow_call=true` whose number is in Parameter Store or `DIALER_ALLOW_LIST` | Loading another roster |
+
+Add either flag to any command above:
+
+- `--dry-run` validates and counts residents, then stops. Nothing is written and no
+  Location requests are made.
+- `--with-location` calculates hospital drive times before writing (needs
+  `LOCATION_ENABLED=1`). Without it, seeded residents have no drive time until you run
+  `POST /locations/refresh`.
+
+For the live demo, run:
 
 ```bash
-python -m app.seed --dry-run       # validate data/Residents_simple.csv
-python -m app.seed                 # write the CSV residents
-python -m app.seed --csv /path/to/residents.csv
-python -m app.seed --demo          # use the original teammate demo roster
+python -m app.seed --demo --with-location
 ```
+
+The CSV path never reads Parameter Store, so it cannot make anyone callable. Both
+sources use IDs starting at `r-001`: seeding `--demo` after the CSV overwrites
+`r-001`–`r-008` and leaves CSV rows `r-009` and `r-010` in the table.
 
 The default CSV contains 10 synthetic residents with calls disabled. Set
 `RESIDENTS_CSV` in `backend/.env` to choose another default file. All rows are
@@ -149,6 +167,74 @@ Re-running the seed replaces records with matching IDs, including their live out
 state; it leaves other residents and check-in history in place. Writes are individual
 operations, so a database failure can leave a partially seeded table. Use this command
 to initialize demo data before an outage.
+
+### Hospital locations and drive times
+
+The six hospitals in `data/Hospital_clean.csv` are the starting points for delivery
+drive estimates. The dataset supplies names, addresses and coordinates; it does not
+confirm oxygen availability. Include `data/` alongside `backend/` on EC2, or set
+`HOSPITALS_CSV` to an absolute path there. The dashboard reads `GET /hospitals` to
+show hospital pins and name/address popups. Mock mode uses the same checked-in CSV.
+
+Set `LOCATION_ENABLED=1` in the backend environment and restart the API to enable
+Amazon Location calculations. The default is `0`, preserving the offline demo.
+Use the existing backend AWS access with `geo-places:Geocode` and
+`geo-routes:CalculateRouteMatrix` and `geo-routes:CalculateRoutes` permissions; the browser map configuration stays
+the same. These are the current `geo-places` and `geo-routes` APIs, so no place index
+or route calculator resource is needed. Install the current runtime requirements
+if the local boto3 installation does not recognize those service names.
+
+Backfill the existing registry from `/docs` using **POST /locations/refresh**, or:
+
+```bash
+curl -X POST 'http://localhost:8000/locations/refresh?zone=A'
+curl 'http://localhost:8000/queue?zone=A'
+# Explicitly update the cached traffic snapshot:
+curl -X POST 'http://localhost:8000/locations/refresh?zone=A&force=true'
+```
+
+Each resident gets `drive_minutes`, `nearest_hospital_id` and
+`location_updated_at`. The response lists residents with no reachable hospital in
+`unavailable`; their drive stays unknown. `conflicts` lists residents whose address
+changed while calculating; retry the refresh for them. Successful results are
+cached by address, coordinates, region and hospital dataset. Polling the dashboard
+never calls the routing API. `DepartNow=true` calculates a traffic snapshot; it is
+not a continuously updated arrival estimate. Refresh before a new outage or when
+traffic changes materially.
+
+Selecting a resident in the list or on the map calls
+`GET /residents/{id}/hospital-route`. The backend uses the existing nearest-hospital
+selection (calculating it on demand if missing), then requests a resident-to-hospital
+driving route from Amazon Location with traffic and simple line geometry. The map
+draws the road route and shows the hospital, drive time, distance and calculation
+time. Successful routes are cached in API process memory for 15 minutes; address,
+coordinate, hospital dataset or selected hospital changes invalidate the cache.
+These trips do not overwrite the hospital-to-resident delivery estimates used for
+ranking. Queue polling does not fetch routes. Mock mode reports that routes require
+the live backend.
+
+`POST /residents` accepts an address without `lat` and `lng`; the backend geocodes
+it and saves the resulting position. Supplied coordinate pairs bypass geocoding.
+With Location enabled, new residents and address/coordinate edits calculate drive
+times automatically. Send both coordinates when changing a position; changing
+only an address geocodes it again. If Location is disabled, supplied coordinates
+still work and changed locations lose their old cached drive. An address requiring
+geocoding returns 503 until Location is enabled. AWS failures return 502 without
+saving a partially updated resident.
+
+To calculate CSV residents' drives before seeding, run from `backend/`:
+
+```bash
+python -m app.seed --with-location
+```
+
+`--dry-run` validates only and never makes Location requests, including when
+combined with `--with-location`. Seeding still replaces matching residents' outage
+state, so use refresh for an existing live registry. Location requests are billable;
+stored geocodes use `IntendedUse=Storage`, which has a higher rate than single-use
+results. See AWS's [Geocode documentation](https://docs.aws.amazon.com/boto3/latest/reference/services/geo-places/client/geocode.html),
+[route matrix documentation](https://docs.aws.amazon.com/boto3/latest/reference/services/geo-routes/client/calculate_route_matrix.html)
+and [pricing](https://aws.amazon.com/location/pricing/).
 
 ### If something goes wrong
 

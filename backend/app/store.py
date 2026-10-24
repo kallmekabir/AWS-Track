@@ -150,8 +150,9 @@ def _next_id() -> str:
     return f"r-{max(numbers, default=0) + 1:03d}"
 
 
-def create_resident(data: ResidentIn) -> Resident:
-    resident = Resident(id=_next_id(), updated_at=_now(), **data.model_dump())
+def create_resident(data: ResidentIn, location_fields: Optional[dict] = None) -> Resident:
+    resident = Resident(id=_next_id(), updated_at=_now(), **data.model_dump(),
+                        **(location_fields or {}))
     _backend.put(resident)
     return resident
 
@@ -172,14 +173,25 @@ def get_resident(resident_id: str) -> Optional[Resident]:
     return _backend.get(resident_id)
 
 
-def update_resident(resident_id: str, patch: ResidentPatch) -> Optional[Resident]:
-    current = _backend.get(resident_id)
-    if current is None:
-        return None
+def update_resident(resident_id: str, patch: ResidentPatch, *,
+                    location_fields: Optional[dict] = None,
+                    expected_location: Optional[tuple] = None) -> Optional[Resident]:
+    """Merge registry/location changes without overwriting concurrent call results.
+
+    A computed route is only saved while its source address and coordinates match.
+    """
     changes = patch.model_dump(exclude_unset=True)  # only the fields the caller sent
-    updated = current.model_copy(update={**changes, "updated_at": _now()})
-    _backend.put(updated)
-    return updated
+    for _ in range(3):
+        current = _backend.get(resident_id)
+        if current is None:
+            return None
+        if expected_location is not None and (current.address, current.lat, current.lng) != expected_location:
+            return None
+        updated = Resident.model_validate({**current.model_dump(), **changes,
+                                          **(location_fields or {}), "updated_at": _now()})
+        if _backend.put_if_unchanged(updated, _version(current)):
+            return updated
+    return None
 
 
 # ---- Live outage state ----
