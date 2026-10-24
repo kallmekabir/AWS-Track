@@ -33,7 +33,9 @@ depends on a powered medical device during a power outage. Record what they said
 calling the record_checkin tool. Rules:
 - Use only what the person said. Never guess. If they did not say it, use null or "unsure" \
 and lower your confidence.
-- Turn words into numbers: "a couple hours" is 2, "one tank" is 1, "half an hour" is 0.5.
+- Turn clear words into numbers: "a couple hours" is 2, "one tank" is 1, "half an hour" is 0.5.
+- Vague amounts are not numbers. "A few", "some", "a while", "not sure", "I don't know", or \
+an answer with a question mark means null, and confidence must be below 0.5.
 - hours_left is how long they can go before they run out, as they said it.
 - backup_left counts full backup tanks or batteries they still have.
 - needs holds only things they asked for. A ride or not being able to drive is "transport". \
