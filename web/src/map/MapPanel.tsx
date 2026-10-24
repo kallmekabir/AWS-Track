@@ -216,10 +216,6 @@ export function MapPanel({ rows, hospitals, hospitalError, drawerOpen, onUnavail
           <span className="lg-item"><span style={{ color: '#286791' }} aria-hidden="true">●</span> Hospitals</span>
         </div>
       )}
-
-      <span className="map-badge" style={{ right: drawerInset + 12 }}>
-        {hospitalError ? 'Hospital locations unavailable' : `Made-up residents · ${hospitals.length} hospitals`}
-      </span>
     </section>
   )
 }
