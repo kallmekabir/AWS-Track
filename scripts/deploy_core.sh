@@ -20,11 +20,14 @@ aws ec2-instance-connect send-ssh-public-key \
 
 ssh -o StrictHostKeyChecking=no -o ConnectTimeout=20 -i "$TMPKEY" ec2-user@"$HOST" bash -s <<'REMOTE'
 set -euo pipefail
-sudo -u careline git -C /opt/careline pull --ff-only
+sudo -u careline git config --global --add safe.directory /opt/careline
+# Pull whatever branch is checked out on the server (not assuming main).
+BRANCH="$(sudo -u careline git -C /opt/careline rev-parse --abbrev-ref HEAD)"
+sudo -u careline git -C /opt/careline pull --ff-only origin "$BRANCH"
 sudo -u careline /opt/careline/.venv/bin/pip install -r /opt/careline/backend/requirements.txt uvicorn
 sudo systemctl restart careline-core
 sleep 2
-systemctl is-active careline-core && echo "careline-core restarted"
+systemctl is-active careline-core && echo "careline-core restarted on $BRANCH"
 REMOTE
 
 echo "Core redeployed on ${INSTANCE_ID}."
