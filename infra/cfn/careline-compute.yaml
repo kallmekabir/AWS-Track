@@ -1,0 +1,156 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  CareLine compute - t4g.small EC2 (no instance profile) running the backend/ FastAPI
+  core on port 8000, reachable only from CloudFront (origin-facing prefix list) and SSH
+  only from the operator IP via EC2 Instance Connect. Credentials are pushed to a file
+  on the instance out of band (scripts/push_creds.sh); this stack creates no IAM.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+  AmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
+  InstanceType:
+    Type: String
+    Default: t4g.small
+  CloudFrontPrefixListId:
+    Type: String
+    Description: Managed prefix list com.amazonaws.global.cloudfront.origin-facing
+    Default: pl-3b927c52
+  OperatorCidr:
+    Type: String
+    Description: Operator public IP in CIDR form for SSH (EC2 Instance Connect)
+  RepoUrl:
+    Type: String
+    Default: https://github.com/kallmekabir/AWS-Track
+  AppPort:
+    Type: Number
+    Default: 8000
+
+Resources:
+  CoreSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: CareLine core - 8000 from CloudFront only, 22 from operator only
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - Description: App port from CloudFront origin-facing prefix list
+          IpProtocol: tcp
+          FromPort: !Ref AppPort
+          ToPort: !Ref AppPort
+          SourcePrefixListId: !Ref CloudFrontPrefixListId
+        - Description: SSH from operator IP (EC2 Instance Connect)
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref OperatorCidr
+      SecurityGroupEgress:
+        - Description: All outbound (AWS APIs, git, pip)
+          IpProtocol: "-1"
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - { Key: Project, Value: careline }
+        - { Key: Owner, Value: infra }
+        - { Key: Env, Value: hackathon }
+        - { Key: Name, Value: careline-core-sg }
+
+  CoreInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref AmiId
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds:
+        - !Ref CoreSecurityGroup
+      MetadataOptions:
+        HttpTokens: required
+        HttpEndpoint: enabled
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: 20
+            Encrypted: true
+            DeleteOnTermination: true
+      Tags:
+        - { Key: Project, Value: careline }
+        - { Key: Owner, Value: infra }
+        - { Key: Env, Value: hackathon }
+        - { Key: Name, Value: careline-core }
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -xeuo pipefail
+          exec > /var/log/careline-userdata.log 2>&1
+
+          dnf -y update
+          dnf -y install python3.12 python3.12-pip git
+
+          # App user and config dir
+          id careline || useradd --system --create-home --shell /usr/sbin/nologin careline
+          install -d -m 0750 -o careline -g careline /etc/careline
+          install -d -m 0755 -o careline -g careline /opt/careline
+
+          # Clone the repo
+          sudo -u careline git clone ${RepoUrl} /opt/careline || (cd /opt/careline && sudo -u careline git pull)
+
+          # venv from backend/requirements.txt (+ uvicorn)
+          sudo -u careline python3.12 -m venv /opt/careline/.venv
+          sudo -u careline /opt/careline/.venv/bin/pip install --upgrade pip
+          sudo -u careline /opt/careline/.venv/bin/pip install -r /opt/careline/backend/requirements.txt uvicorn
+
+          # Placeholder env + credentials files (real values pushed out of band)
+          if [ ! -f /etc/careline/backend.env ]; then
+            cat > /etc/careline/backend.env <<'ENVEOF'
+          AWS_DEFAULT_REGION=us-east-1
+          ALLOWED_ORIGINS=http://localhost:5173
+          CONNECT_DRY_RUN=1
+          RESIDENTS_TABLE=
+          CHECKINS_TABLE=
+          PHONES_SSM_PATH=/carecall/phones
+          MAX_LINES=4
+          NO_ANSWER_SECONDS=120
+          ENVEOF
+          fi
+          touch /etc/careline/credentials
+          chown careline:careline /etc/careline/backend.env /etc/careline/credentials
+          chmod 0600 /etc/careline/backend.env /etc/careline/credentials
+
+          # systemd unit
+          cat > /etc/systemd/system/careline-core.service <<'UNITEOF'
+          [Unit]
+          Description=CareLine core FastAPI (uvicorn)
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=simple
+          User=careline
+          Group=careline
+          WorkingDirectory=/opt/careline/backend
+          EnvironmentFile=/etc/careline/backend.env
+          Environment=AWS_SHARED_CREDENTIALS_FILE=/etc/careline/credentials
+          Environment=AWS_REGION=us-east-1
+          ExecStart=/opt/careline/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port ${AppPort}
+          Restart=always
+          RestartSec=3
+
+          [Install]
+          WantedBy=multi-user.target
+          UNITEOF
+
+          systemctl daemon-reload
+          systemctl enable --now careline-core.service
+
+Outputs:
+  InstanceId:
+    Value: !Ref CoreInstance
+  PublicDnsName:
+    Value: !GetAtt CoreInstance.PublicDnsName
+  PublicIp:
+    Value: !GetAtt CoreInstance.PublicIp
+  SecurityGroupId:
+    Value: !Ref CoreSecurityGroup

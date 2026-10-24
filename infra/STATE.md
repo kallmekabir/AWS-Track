@@ -52,11 +52,13 @@ Status: TODO · IN_PROGRESS · DONE · WAITING · BLOCKED · SKIPPED
 | P7.1 CareLineWeb | TODO | 0 | | | H4 — S3+CloudFront, no role |
 | P7.2 CareLineObservability | SKIPPED | 0 | | 20:33 | Alarms/SNS fine but metric pipeline tied to Lambda/SFN that are skipped; defer |
 | H1 Readonly perms probe | DONE | 1 | 20:31 | 20:33 | MaxSessionDuration 43200s; RunInstances t4g.small dry-run OK; CloudFront OK (0 dists); S3 list OK; operator IP recorded in the security group; cf prefix pl-3b927c52; default vpc-047a74fe9d428cf6b subnet-0f4ede8143c572e07 ami-07890d146f8d6ee5b (AL2023 arm64) |
-| H2 Data+Bedrock logging+Guardrail | BLOCKED | 0 | 20:33 | | Needs C4 table contract — `.plans/careline-task-graph.md` missing (B3) |
-| H3 CareLineCompute (EC2) | TODO | 0 | | | |
-| H4 CareLineWeb (S3+CloudFront) | TODO | 0 | | | |
-| H5 Scripts (push_creds/deploy_core/deploy_web) | TODO | 0 | | | |
-| H6 Verify end-to-end | TODO | 0 | | | |
+| H2 Data+Bedrock logging+Guardrail | DONE | 2 | 21:20 | 21:45 | artifacts bucket careline-artifacts-874092763686 (private, SSE, Bedrock bucket policy); Bedrock S3 logging on (verified); guardrail bathrr9vaolx v2 - medical denials + charging-pass verified; PII note below. Tables still HELD. |
+| H3 CareLineCompute (EC2) | DONE | 1 | 21:20 | 21:38 | Stack deployed; i-025ac542a085a7bf0, DNS ec2-34-207-186-236, SG sg-088b86a295fca275b; service active; local /health ok |
+| H4 CareLineWeb (S3+CloudFront) | DONE | 1 | 21:20 | 21:42 | d1baurlz014iv6.cloudfront.net; bucket careline-web-874092763686; dist E36C3FDSEFOK86; strip-api function; placeholder uploaded |
+| H5 Scripts (push_creds/deploy_core/deploy_web) | DONE | 1 | 21:20 | 21:30 | 3 scripts written + chmod +x; push_creds used successfully to seed creds + ALLOWED_ORIGINS |
+| H6 Verify end-to-end | DONE | 1 | 21:46 | 21:47 | /api/health 200 {"ok":true,"calls_dry_run":true}; root placeholder 200; direct EC2:8000 UNREACHABLE (HTTP 000) |
+| Git: branch infra/aws-hosting + rebase main | DONE | 1 | 21:16 | 21:18 | Committed infra/docs; rebased on origin/main (pulled backend/, python3.13 SAM app); resolved tech.md conflict keeping both upstream + my edits |
+| DynamoDB check (step 4) | DONE | 1 | 21:19 | 21:20 | list-tables = EMPTY. Kabir created none. Contract per backend/template.yaml: Residents PK id(S); Checkins PK resident_id(S) SK at(S); both PAY_PER_REQUEST. HOLDING creation per human. |
 | P8.1 End-to-end dry run | TODO | 0 | | | |
 | P8.2 Live call smoke test | TODO | 0 | | | |
 | P8.3 Handoff | TODO | 0 | | | |
@@ -108,3 +110,10 @@ Status: TODO · IN_PROGRESS · DONE · WAITING · BLOCKED · SKIPPED
 - Root cause (verified 3 ways): `ws-default-policy` makes IAM read-only (List/Get/Generate) + CreateServiceLinkedRole + PassRole(self only); PowerUserAccess excludes IAM writes. No in-account fallback exists.
 - Impact: CDK bootstrap + every execution-role task (P2.2, P3.x, P4.x, P5.1, P6.1, P7.x) are blocked. CDKToolkit is in ROLLBACK_COMPLETE.
 - Awaiting gate G4 before continuing. P0.3/P0.4 and read-only Bedrock/Connect checks could proceed meanwhile but the core CDK build cannot land until G4 is resolved.
+
+### AWS-hosting phase report (21:47 PDT) — H1-H6 DONE (no-role architecture)
+- Live: CloudFront https://d1baurlz014iv6.cloudfront.net -> S3 dashboard (placeholder) + /api/* -> EC2 FastAPI core (backend/app). `/api/health` returns 200 {"ok":true,"calls_dry_run":true}; port 8000 not internet-reachable.
+- Resources: EC2 i-025ac542a085a7bf0 (no instance profile, IMDSv2, SG sg-088b86a295fca275b), S3 careline-web + careline-artifacts, CloudFront E36C3FDSEFOK86 + strip-api function, Bedrock guardrail bathrr9vaolx v2, Bedrock S3 invocation logging. All tagged Project=careline. IDs in docs/infra-outputs.md + SSM /careline/*.
+- Credentials: temporary WSParticipant session creds pushed to /etc/careline/credentials (mode 0600, approved documented exception). Re-run scripts/push_creds.sh when they expire.
+- Guardrail PII limitation: medical-advice denials and grounding work and are verified; however PII ANONYMIZE (and a regex phone filter) do NOT surface via `apply-guardrail --source INPUT` (returns action=NONE, 0 sensitiveInformationPolicyUnits) even with outputScope=FULL. ANONYMIZE applies on the model I/O path, not the standalone INPUT probe. Primary PII control remains the app's regex redaction in lex_hook (per plan; Comprehend step was cut). Recorded as known limitation, not a blocker.
+- HELD: DynamoDB tables (awaiting team decision). SKIPPED (no IAM roles): all Lambda/Step Functions/API Gateway/EventBridge-target/Knowledge Base tasks; SAM template.yaml not deployed.
