@@ -52,6 +52,21 @@ Switching config without a redeploy: edit `/etc/careline/backend.env` on the ins
 (via EC2 Instance Connect) and `sudo systemctl restart careline-core`. Keys include
 `CONNECT_DRY_RUN`, `ALLOWED_ORIGINS`, table names, Bedrock model/guardrail IDs.
 
+## No-hook application contract (Oct 24)
+
+The application now collects results with `app/call_results.py` after Connect
+disconnects, using persisted intent and a1–a5 contact attributes. Deploy one uvicorn
+worker so its five-second lifespan checker and poll-triggered checks share a lock.
+The timeout backstop is 300 seconds from call_started_at. Install the runtime from
+backend/requirements.txt; no Mangum adapter or execution function is used.
+
+The selected Lex bot is CareCallCheckIn (en_US, published live alias), with five
+FreeFormInput slots and a repeated safety prompt to fill A1. Emergency phrases in
+slots escalate after disconnect; early hang-up can bypass attribute copying. Follow
+[connect/SETUP.md](../../connect/SETUP.md) for console/phone acceptance before
+switching to the new flow. These code changes were tested locally; this document
+update does not verify that the current collector is deployed.
+
 ## Pending / TODO for teammates
 
 - **CONNECT_CONTACT_FLOW_ID is Kabir's TEST flow** (`40ac3787...`, "CareCall test call").

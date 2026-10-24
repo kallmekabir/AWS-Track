@@ -270,8 +270,9 @@ flowchart TD
 | Amazon Location Service | Map tiles today; supplier drive times in Phase 2 |
 | Amazon SNS | Planned emergency alert email |
 
-The broader CareLine architecture (copilot, multilingual calls and workflows) is
-planned in [`docs/careline-plan.md`](docs/careline-plan.md). The workshop runs no
+The current workshop plan is [`docs/careline-plan.md`](docs/careline-plan.md).
+The broader CareLine design (copilot, multilingual calls and workflows) is preserved
+as [historical reference](docs/reference/careline-plan.original.md). The workshop runs no
 execution functions and creates no IAM roles.
 
 ## Triage rules
@@ -326,7 +327,7 @@ changes.
 .kiro/steering/        Kiro steering: product, tech, structure, plan (manual)
 .kiro/specs/           Kiro specs per workstream (generated in Kiro)
 .plans/                Feature specs (amazon-location-map-spec.md)
-docs/careline-plan.md  Full implementation plan
+docs/careline-plan.md  Current workshop implementation plan
 schemas/               JSON schemas for extraction and the eval
 data/                  hospitals.csv, residents.sample.csv; private/ is gitignored (planned)
 scripts/               seed.py, build_geo_data.py (planned)
@@ -345,8 +346,9 @@ web/                   React + Vite operator dashboard (Start outage + live list
 Use [Run the backend](#run-the-backend-works-today) for the working workshop path.
 Future infrastructure automation belongs in an account that permits role creation;
 the archived template is a historical reference and requires handler/packaging
-updates before reuse. The broader planned scripts and CDK stacks are described in
-`docs/careline-plan.md`. Never commit `.env` or `web/.env.local`.
+updates before reuse. The original scripts and CDK design are preserved in
+`docs/reference/careline-plan.original.md`; current work follows `docs/NEXT_STEPS.md`.
+Never commit `.env` or `web/.env.local`.
 
 ## Building with Kiro
 

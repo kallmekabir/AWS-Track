@@ -86,7 +86,7 @@ Priority order for AWS: **1. Amazon Connect (calls) → 2. Amazon Bedrock (under
 
 Using Bedrock is the entry ticket for this track, so it must be central and visible in the demo.
 
-- **Where:** Phase 2 replaces the `extract_facts(transcript)` placeholder in `app/call_results.py`, optionally delegating to `app/understand.py`. It returns `None` today.
+- **Where:** Phase 2 replaces the `extract_facts(transcript)` placeholder in `app/call_results.py`, wiring the existing `app/understand.py` and `app/rules.py` helpers, which have offline tests. It returns `None` today.
 - **How:** the Converse API with a forced tool (`record_checkin`), so Bedrock must return JSON in our exact shape. Temperature 0.
 - **Model:** an Amazon Nova text model. Read the ID from the `BEDROCK_MODEL_ID` environment variable; never hard-code it.
 - **Output shape:** defined in `docs/RANKING.md` ("What Bedrock returns").
@@ -218,7 +218,8 @@ backend/
   app/phones.py        Reads teammates' numbers from Parameter Store; never prints them
   app/calling.py       Amazon Connect: 4 calls at a time, dial_next(), check_calls()
   app/understand.py    Bedrock: transcript → facts                              (Phase 2)
-  app/ranking.py       Round 1 (done) and round 2 (Phase 2) rules, no AWS calls inside
+  app/ranking.py       Round 1 calling order, no AWS calls inside
+  app/rules.py         Round 2 rules, tested offline; collector integration pending
   app/location.py      Amazon Location: geocode, drive time                     (Phase 2)
   app/script.py        Fixed questions, closing text and emergency phrases
   app/call_results.py  Connect attributes → transcript → status; extract_facts is the Phase 2 hook

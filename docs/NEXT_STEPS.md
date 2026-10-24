@@ -80,9 +80,9 @@ Docs: [StartOutboundVoiceContact](https://docs.aws.amazon.com/connect/latest/API
   - **Resident:** add `device_group` (1–3, replacing `risk_tier`), `backups_on_file`, `backup_hours_each`, `drive_minutes`, `missed_calls`, `contact_id`, `call_started_at`.
   - **Result:** add `level`, `rule_id`, `reason`, `hours_left`, `time_to_spare`, `runs_out_at`, `recheck_at`, `facts`, `transcript`.
   - Replace the `Status` values with `HELP_NOW`, `HELP_SOON`, `PERSON_CHECK`, `NEEDS_SUPPLIES`, `OK_FOR_NOW`, `CALLING`, `NOT_CALLED`.
-- [ ] **8. `app/call_results.py:extract_facts(transcript)`: Bedrock.** Replace its current `None` placeholder, optionally delegating to `app/understand.py`. Converse API with the forced `record_checkin` tool, temperature 0, model from `BEDROCK_MODEL_ID`.
+- [ ] **8. `app/call_results.py:extract_facts(transcript)`: Bedrock.** Replace its current `None` placeholder by wiring the existing `app/understand.py` extraction helper. Its forced-tool request, normalization and error handling have offline tests; the collector integration is still pending. Converse API with the forced `record_checkin` tool, temperature 0, model from `BEDROCK_MODEL_ID`.
   - *Done when:* 5 typed transcripts, including a messy one, each return valid JSON in the exact shape.
-- [ ] **9. `app/ranking.py` and `eval/run.py`.** Round 1 and round 2 exactly as in `docs/RANKING.md`, with no AWS calls inside. The eval runs the 10 test cases. *(Round 1 is done and tested; round 2 and the eval are next.)*
+- [ ] **9. `app/ranking.py` and `eval/run.py`.** Round 1 and round 2 exactly as in `docs/RANKING.md`, with no AWS calls inside. The eval runs the 10 test cases. *(Round 1 is in app/ranking.py. Round 2 exists in app/rules.py with offline tests for the worked example and edge cases; call-result integration and eval/run.py are still pending.)*
   - *Done when:* 0 missed "Help now" cases.
 - [ ] **10. `app/location.py`: Amazon Location.**
   - Geocode the address when a resident is added. Remember positions come back as longitude first.

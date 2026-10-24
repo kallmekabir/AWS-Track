@@ -1,5 +1,11 @@
 # CareLine — AWS readiness check (read-only)
 
+> Historical snapshot from before the IAM restriction and hosting pivot were verified.
+> The "No other blockers" conclusion and serverless next steps below are superseded.
+> Do not bootstrap CDK or recreate execution-role resources from this report.
+> Use [infra/STATE.md](../infra/STATE.md), the [handoff](infra/HANDOFF.md) and the
+> [current implementation plan](careline-plan.md). This edit performs no new AWS checks.
+
 Generated: 2026-10-23 (read-only checks only; nothing was created).
 Target account confirmed: **`WSParticipantRole` / account `874092763686`**, region
 **us-east-1**. Checks run via the AWS CLI with the WSParticipant session credentials.

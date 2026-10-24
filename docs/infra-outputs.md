@@ -34,4 +34,6 @@ reference the Secrets Manager secret name or the API key ID instead.
 
 ## Not deployed (no IAM roles available)
 Lambda, Step Functions, API Gateway, EventBridge targets, Bedrock Knowledge Base,
-CDK bootstrap, SAM backend/template.yaml. See infra/STATE.md decisions.
+CDK bootstrap, and the template now archived at docs/reference/template.lambda.yaml.
+See infra/STATE.md decisions. This inventory is recorded infrastructure evidence;
+it does not prove the current no-hook collector is deployed or phone-tested.

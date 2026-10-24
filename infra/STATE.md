@@ -7,6 +7,21 @@ Humans may edit it too; the agent re-reads it at the start of every loop.
 > files actually live at `infra/STATE.md` and `infra/RUNBOOK.md`. Those are the real
 > paths used by this run.
 
+## Current architecture clarification (Oct 24)
+
+The timestamped tables and reports below are preserved as historical evidence.
+Current implementation contracts are in [the workshop task graph](../.plans/careline-task-graph.md)
+and [implementation plan](../docs/careline-plan.md): two tables (Residents PK id;
+Checkins PK resident_id, SK at), one EC2 uvicorn process, CloudFront /api stripping,
+Lex slots without code hooks, and background collection after disconnect. The
+old C4/C5/C8 five-table/event contracts and per-turn lex_hook redaction assumption
+are retired. The template reference is now docs/reference/template.lambda.yaml.
+
+Local collector tests and DRY_RUN passed; console/phone acceptance and verification
+of the deployed collector remain pending. This documentation reconciliation neither
+deploys code nor changes the status of any past AWS check. For current operations,
+use infra/RUNBOOK.md and docs/infra/HANDOFF.md.
+
 ## Run
 
 | Field | Value |
