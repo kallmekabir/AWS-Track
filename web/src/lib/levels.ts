@@ -27,7 +27,7 @@ export const LEVEL_ORDER: Status[] = [
 export const RULE_TEXT: Record<string, string> = {
   R0: 'Said it is an emergency, or said they are not safe',
   R1: 'Device off and no backups left',
-  R2: 'Less than 1 hour to spare after the supplier drive',
+  R2: 'Less than 1 hour to spare after the hospital drive',
   R3: 'One backup left, or under 4 hours left',
   R4: 'Answers unclear, or hours unknown for an oxygen or ventilator user',
   R5: 'Asked for supplies',

@@ -40,7 +40,7 @@ We started with a bigger plan called CareLine. We cut it down so a small team ca
 | Knowledge Bases, Guardrails, Step Functions, EventBridge, CDK | Removed from the MVP | Each adds setup time without changing what the judges see |
 | Claude models on Bedrock | Amazon Nova on Bedrock | AWS's own model, no extra access form, fits our AWS-only rule |
 | Calls one by one, triage only | **4 calls at a time** and **two ranking rounds** with **time to spare** | This is what makes us different: we rank by who runs out first |
-| Map with no distance | **Amazon Location drive time** from the nearest supplier | Distance changes who needs help first |
+| Map with no distance | **Amazon Location drive time** from the nearest hospital in `data/Hospital_clean.csv` | Distance changes who needs help first |
 | Many dashboard panels | **One screen**: map, ranked list, one person's details | Jane must see who to help next at a glance |
 | Spreadsheet-style statuses | Plain levels: Help now, Help soon, A person must check, Needs supplies, OK for now | Words a non-technical person reads instantly |
 
@@ -69,7 +69,7 @@ Priority order for AWS: **1. Amazon Connect (calls) → 2. Amazon Bedrock (under
 | Amazon Connect | Placing calls (`StartOutboundVoiceContact`) and running the call script (contact flow) | Ranking or storing data |
 | Amazon Lex V2 | Collecting A1–A5 in CheckIn slots; Connect persists them as contact attributes | Understanding meaning (that's Bedrock) |
 | Amazon Bedrock (Amazon Nova) | Turning a call transcript into facts (Converse API, tool use, temperature 0). Optional: a short zone summary for Jane | Deciding levels or who is safe |
-| Amazon Location Service | Address → map position (`geo-places` `geocode`); drive time from suppliers to residents (`geo-routes` `calculate_route_matrix`); map tiles on the dashboard (`geo-maps`) | Anything that isn't about places |
+| Amazon Location Service | Address → map position (`geo-places` `geocode`); drive time from CSV hospitals to residents (`geo-routes` `calculate_route_matrix`); map tiles on the dashboard (`geo-maps`) | Anything that isn't about places |
 | Amazon EC2 | Long-lived FastAPI server and background call checker on port 8000 | Collecting voice input |
 | Amazon CloudFront | Serving the dashboard and proxying `/api/...` to the backend with `/api` stripped | Business logic |
 | Amazon DynamoDB | Residents, call results, suppliers | Files or images |
@@ -94,8 +94,8 @@ Using Bedrock is the entry ticket for this track, so it must be central and visi
 
 ### Amazon Location is how distance enters the ranking
 
-- **When a resident is added:** geocode the address and save the map position. Amazon Location returns positions as `[longitude, latitude]`, so be careful with the order. We store the result, so check the `IntendedUse` setting and its pricing in the docs before calling.
-- **Before ranking:** for each resident, find the drive time in minutes from each supplier with `calculate_route_matrix` (origins = suppliers, destinations = residents). Keep the shortest. Cache it on the resident, because addresses don't move during an outage.
+- **When a resident is added:** with `LOCATION_ENABLED=1`, geocode the address if both coordinates are omitted and save the position. Amazon Location returns `[longitude, latitude]`. Stored geocodes use `IntendedUse=Storage`; supplied coordinate pairs bypass geocoding.
+- **Before ranking:** use all six hospitals from `data/Hospital_clean.csv` as origins and residents as destinations in `calculate_route_matrix`. Keep the shortest reachable drive, hospital ID and calculation time. New residents and location edits calculate automatically; `POST /locations/refresh?zone=A` backfills existing residents, with `force=true` to refresh traffic. Dashboard reads never calculate routes. The CSV does not assert oxygen availability.
 - **On the dashboard:** map tiles from the Amazon Location Maps API with a browser API key (`VITE_LOCATION_API_KEY`) limited to map actions only.
 
 ---
@@ -156,7 +156,9 @@ source .venv/bin/activate
 pip install -r requirements-dev.txt
 uvicorn app.main:app --reload --env-file .env   # http://localhost:8000/docs
 python -m unittest discover -s tests -t .        # backend tests, no AWS needed
-python -m app.seed                               # write the demo roster to DynamoDB
+python -m app.seed --demo                        # teammate roster to DynamoDB; phones can ring
+python -m app.seed                               # CSV residents (data/Residents_simple.csv); nobody callable
+# add --with-location for drive times, --dry-run to validate without writing
 
 # EC2 backend: from backend/, with /etc/careline/backend.env loaded by the service manager
 pip install -r requirements.txt
@@ -201,6 +203,8 @@ NO_ANSWER_SECONDS=300
 ALLOWED_ORIGINS=https://<cloudfront>,http://localhost:5173
 BEDROCK_MODEL_ID=                   # Phase 2: an Amazon Nova text model ID from the Bedrock console
 SNS_TOPIC_ARN=                      # Phase 2
+LOCATION_ENABLED=0                 # 1 enables geocoding and cached hospital drive calculations
+HOSPITALS_CSV=                      # optional override; default data/Hospital_clean.csv
 ```
 
 Use `AWS_DEFAULT_REGION` for boto3. `AWS_PROFILE=carecall` is for local development; omit it on EC2 if AWS access comes from another mechanism.
@@ -220,7 +224,7 @@ backend/
   app/understand.py    Bedrock: transcript → facts                              (Phase 2)
   app/ranking.py       Round 1 calling order, no AWS calls inside
   app/rules.py         Round 2 rules, tested offline; collector integration pending
-  app/location.py      Amazon Location: geocode, drive time                     (Phase 2)
+  app/location.py      Amazon Location: geocode, CSV hospitals, cached drive times
   app/script.py        Fixed questions, closing text and emergency phrases
   app/call_results.py  Connect attributes → transcript → status; extract_facts is the Phase 2 hook
   tests/               unittest tests with a fake Connect client

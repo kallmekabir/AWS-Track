@@ -2,7 +2,7 @@
 // selected person's details over the map's right edge. One GET /queue poll every
 // 3 seconds feeds all of it, so the list, the pins and the details never disagree.
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { callAgain, getQueue, type Resident } from '../api'
+import { callAgain, getHospitals, getQueue, type Resident } from '../api'
 import { config, ZONE } from '../config'
 import { useNow } from '../lib/useNow'
 import { usePoll } from '../lib/usePoll'
@@ -21,6 +21,7 @@ export function Dashboard() {
   const now = useNow(1000)
 
   const queue = usePoll(() => getQueue(ZONE), `queue:${ZONE}`)
+  const hospitals = usePoll(() => getHospitals(), 'hospitals', 60_000)
   const rows = queue.data ?? []
   const selectedIndex = rows.findIndex((r) => r.id === selectedId)
   const selected = selectedIndex >= 0 ? rows[selectedIndex] : null
@@ -79,12 +80,14 @@ export function Dashboard() {
       >
         <PriorityList rows={rows} now={now} loading={queue.data === undefined && !queue.error} onCallAgain={onCallAgain} />
         {!mapUnavailable && (
-          <MapPanel rows={rows} drawerOpen={!!selected} onUnavailable={() => setMapUnavailable(true)} />
+          <MapPanel rows={rows} hospitals={hospitals.data ?? []} hospitalError={!!hospitals.error}
+            drawerOpen={!!selected} onUnavailable={() => setMapUnavailable(true)} />
         )}
         {selected && (
           <ResidentDrawer
             key={selected.id}
             resident={selected}
+            hospitals={hospitals.data ?? []}
             place={selectedIndex + 1}
             now={now}
             onClose={() => select(null)}

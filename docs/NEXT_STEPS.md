@@ -54,7 +54,7 @@ Docs: [StartOutboundVoiceContact](https://docs.aws.amazon.com/connect/latest/API
   - *Status:* console work. `connect/SETUP.md` steps 1–5 build the real check-in flow directly; the claimed number goes in `CONNECT_SOURCE_NUMBER`, so no queue setup is needed. Test with `POST /residents/r-001/call` instead of the CLI.
 - [ ] **2. Teammates as residents.** Add the 4 teammates (with their OK) with `allow_call: true`. Keep their real numbers in a git-ignored file such as `backend/seed.local.json`, never in git.
   - *Done when:* `GET /residents` shows 4 callable teammates and the made-up residents.
-  - *Status:* code ready. `app/seed.py` gives teammates' numbers from Parameter Store (`/carecall/phones/<persona>`, SecureString; each teammate adds their own) to the personas Daniel, Ruth, Maria and Linh; run `python -m app.seed` (SETUP.md section 5).
+  - *Status:* code ready. `app/seed.py` gives teammates' numbers from Parameter Store (`/carecall/phones/<persona>`, SecureString; each teammate adds their own) to the personas Daniel, Ruth, Maria and Linh; run `python -m app.seed --demo` (SETUP.md section 5). Plain `python -m app.seed` loads the CSV, where nobody is callable.
 - [ ] **3. `app/calling.py`: 4 calls at once.** Write `start_call(resident)` and `dial_wave(zone)`. `dial_wave` orders the zone with round 1 (`docs/RANKING.md`), takes the first `MAX_LINES`, and starts each call. Refuse anyone without `allow_call`. Save the returned `ContactId` and start time on the resident. Make `POST /outages` call `dial_wave`.
   - *Done when:* clicking `POST /outages` in `/docs` makes all 4 phones ring together.
   - *Status:* code ready. `app/calling.py` starts the 4 calls in parallel, also refuses numbers missing from `DIALER_ALLOW_LIST`, and the dashboard's **Start outage** button calls it.
@@ -84,11 +84,13 @@ Docs: [StartOutboundVoiceContact](https://docs.aws.amazon.com/connect/latest/API
   - *Done when:* 5 typed transcripts, including a messy one, each return valid JSON in the exact shape.
 - [ ] **9. `app/ranking.py` and `eval/run.py`.** Round 1 and round 2 exactly as in `docs/RANKING.md`, with no AWS calls inside. The eval runs the 10 test cases. *(Round 1 is in app/ranking.py. Round 2 exists in app/rules.py with offline tests for the worked example and edge cases; call-result integration and eval/run.py are still pending.)*
   - *Done when:* 0 missed "Help now" cases.
-- [ ] **10. `app/location.py`: Amazon Location.**
-  - Geocode the address when a resident is added. Remember positions come back as longitude first.
-  - Add 3 made-up oxygen suppliers.
-  - Use `calculate_route_matrix` (suppliers → residents) to save each resident's shortest `drive_minutes`.
-  - *Done when:* every resident has a map position and `drive_minutes`.
+- [x] **10. `app/location.py`: Amazon Location implementation.**
+  - Geocode a new resident's address when coordinates are omitted, with `IntendedUse=Storage`. Supplied CSV coordinates are retained; AWS positions are longitude first.
+  - Use all six hospitals from `data/Hospital_clean.csv` as origins, replacing made-up oxygen suppliers. `GET /hospitals` exposes the same data to the map.
+  - `calculate_route_matrix` (hospitals → residents, Car, DepartNow) saves the shortest reachable `drive_minutes`, hospital ID, calculation time and cache key. Batched requests obey the unbounded matrix limits. Failed routes remain unknown.
+  - New residents and address/coordinate edits calculate drives with `LOCATION_ENABLED=1`. `POST /locations/refresh?zone=A` backfills existing residents; `force=true` updates the traffic snapshot. Dashboard polls only read the cache.
+  - Offline tests cover CSV validation, coordinate order, geocoding, route selection, batching, cache invalidation, API integration and concurrent call updates. The dashboard shows hospital pins and the selected resident's nearest hospital and cached drive.
+  - **Live acceptance still open:** enable Location on EC2 and refresh the registry; verify every reachable resident has a position and drive time with the real AWS account. See README's hospital location setup. Hospital oxygen availability is not asserted by this dataset.
 - [ ] **11. Connect it all in `call_results.finish_call`.** After disconnect and five answers, through `extract_facts`: understand → drive time (cached) → rank → save result → SNS email if "Help now" → `dial_next`.
   - *Done when:* a real call ends with a ranked result in `GET /queue`.
 - [ ] **12. `GET /queue` uses the new order:** level, then least time to spare.
@@ -100,7 +102,7 @@ Docs: [StartOutboundVoiceContact](https://docs.aws.amazon.com/connect/latest/API
 **Ask me first:** Why poll every 3 seconds instead of WebSockets? Why must every level show its reason?
 
 - [ ] **13.** Load `GET /queue` and `GET /residents` every 3 seconds. Show the level pill, reason, and a countdown to `runs_out_at`. *(Started: `web/src/layout/Dashboard.tsx` polls `/queue` every 3 s; the ranked list (`web/src/priority/`) shows the level pill, rule + reason, call state (answers arrive after disconnect), and a backup gauge with a ticking countdown to `runs_out_at`. Tested with a dry-run backend and hand-entered check-ins.)*
-- [ ] **14. Map with Amazon Location tiles.** This needs a map library in the browser (MapLibre is the usual one), so ask me before adding it. Use a browser API key limited to map actions. *(Started: MapLibre approved Oct 23. `web/src/map/` shows every resident as a pin colored by level and numbered by place in line; clicking a pin opens their details. Suppliers join the map once task 10 exposes them.)*
+- [ ] **14. Map with Amazon Location tiles.** This needs a map library in the browser (MapLibre is the usual one), so ask me before adding it. Use a browser API key limited to map actions. *(Started: MapLibre approved Oct 23. `web/src/map/` shows every resident as a pin colored by level and numbered by place in line; clicking a pin opens their details. All six CSV hospitals now have labeled pins with name/address popups. Live map acceptance remains open.)*
 - [ ] **15. Detail panel:** what they said, Bedrock's facts, the rule ID, and the time to spare. *(Started: `web/src/drawer/` shows what they said (after a call ends), the rule and reason, the backup countdown, supplier drive, missed calls and Call again. Bedrock's facts and time to spare need Phase 2 fields in `/queue`.)*
 - [ ] **16. Start outage button** calls `POST /outages`. The Acknowledge button saves who acknowledged. *(Start outage and "Call again" are in; Acknowledge isn't yet.)*
 
@@ -139,6 +141,8 @@ Add a line whenever we decide something, so nobody has to ask twice.
 
 | Date | Decision | Why |
 | --- | --- | --- |
+| Oct 24 | All six `Hospital_clean.csv` hospitals replace fictional supplier origins | User-selected dataset; use shortest hospital-to-resident drive, without assuming oxygen availability |
+| Oct 24 | Location calculations are opt-in with `LOCATION_ENABLED=1`; cached drives refresh explicitly | Preserve offline demos and keep 3-second dashboard polls free of route charges; expose calculation time for the traffic snapshot |
 | Oct 23 | Python FastAPI backend, Vite + React dashboard | Team skills; FastAPI gives free test pages at `/docs` |
 | Oct 23 | English only, AWS-only services | Time; AWS track |
 | Oct 23 | Amazon Connect for calls, 4 lines at a time | Real calls from one API call; 4 = our team's phones |

@@ -10,6 +10,24 @@
   inset: 0;
 }
 
+.map-route {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #17496a;
+  font-size: var(--fs-12);
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
 .map-legend {
   position: absolute;
   z-index: 2;

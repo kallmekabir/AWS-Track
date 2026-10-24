@@ -1,6 +1,7 @@
 # Runtime packages for the long-lived EC2 server (also sufficient locally).
 fastapi>=0.115
 pydantic>=2.7
-boto3>=1.34
+# Includes the geo-places and geo-routes clients used by app/location.py.
+boto3>=1.35.70
 uvicorn[standard]>=0.30
 python-dotenv>=1.0

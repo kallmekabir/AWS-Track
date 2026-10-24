@@ -7,16 +7,16 @@ On EC2:        uvicorn app.main:app --host 0.0.0.0 --port 8000
 import asyncio
 import logging
 import os
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from typing import Optional
 
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
-from app import call_results, calling, script, store
-from app.models import (CheckInIn, OutageIn, Resident, ResidentIn, ResidentOut,
+from app import call_results, calling, location, script, store
+from app.models import (CheckInIn, Hospital, HospitalRoute, OutageIn, Resident, ResidentIn, ResidentOut,
                         ResidentPatch)
 
 _log = logging.getLogger(__name__)
@@ -77,7 +77,48 @@ def _found(resident: Optional[Resident]) -> Resident:
 
 @app.get("/health")
 def health():
-    return {"ok": True, "calls_dry_run": calling.DRY_RUN}
+    return {"ok": True, "calls_dry_run": calling.DRY_RUN, "location_enabled": location.enabled()}
+
+
+@contextmanager
+def _location_errors():
+    try:
+        yield
+    except location.LocationNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
+    except location.LocationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except (ClientError, BotoCoreError):
+        raise HTTPException(status_code=502, detail="Amazon Location request failed; check backend AWS access and retry") from None
+
+
+@app.get("/hospitals", response_model=list[Hospital])
+def list_hospitals():
+    with _location_errors():
+        return location.load_hospitals()
+
+
+@app.post("/locations/refresh")
+def refresh_locations(zone: Optional[str] = None, force: bool = False):
+    """Backfill cached drives; force=true updates the traffic snapshot."""
+    residents = store.list_residents(zone)
+    with _location_errors():
+        fields = location.drive_times(residents, force=force)
+    saved, conflicts, unavailable = [], [], []
+    for resident, values in zip(residents, fields):
+        # Avoid writes for cache hits (and avoid disturbing call completion versions).
+        if all(getattr(resident, key) == value for key, value in values.items()):
+            saved.append(resident.id)
+            continue
+        updated = store.update_resident(resident.id, ResidentPatch(), location_fields=values,
+                                        expected_location=(resident.address, resident.lat, resident.lng))
+        if updated is None:
+            conflicts.append(resident.id)
+        else:
+            saved.append(resident.id)
+            if updated.drive_minutes is None:
+                unavailable.append(resident.id)
+    return {"residents": saved, "unavailable": unavailable, "conflicts": conflicts}
 
 
 # ---- Residents: the registry (name, phone, address, device group) ----
@@ -93,14 +134,49 @@ def get_resident(resident_id: str):
     return _out(_found(store.get_resident(resident_id)))
 
 
+@app.get("/residents/{resident_id}/hospital-route", response_model=HospitalRoute)
+def get_hospital_route(resident_id: str):
+    resident = _found(store.get_resident(resident_id))
+    with _location_errors():
+        return location.hospital_route(resident)
+
+
 @app.post("/residents", response_model=ResidentOut, status_code=201)
 def create_resident(body: ResidentIn):
-    return _out(store.create_resident(body))
+    with _location_errors():
+        resolved = location.resolve_position(body)
+        fields = location.drive_times([resolved])[0] if location.enabled() else {}
+    return _out(store.create_resident(resolved, fields))
 
 
 @app.patch("/residents/{resident_id}", response_model=ResidentOut)
 def update_resident(resident_id: str, body: ResidentPatch):
-    return _out(_found(store.update_resident(resident_id, body)))
+    current = _found(store.get_resident(resident_id))
+    changes = body.model_dump(exclude_unset=True)
+    position_fields = {"lat", "lng"} & changes.keys()
+    if position_fields and position_fields != {"lat", "lng"}:
+        raise HTTPException(status_code=422, detail="Update lat and lng together")
+    moved = any(changes.get(key, getattr(current, key)) != getattr(current, key)
+                for key in ("address", "lat", "lng"))
+    candidate = {**current.model_dump(include=set(ResidentIn.model_fields)), **changes}
+    if moved and "address" in changes and not position_fields:
+        candidate.update(lat=None, lng=None)
+    try:
+        validated = ResidentIn.model_validate(candidate)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors(include_input=False, include_context=False)) from None
+    fields = {}
+    if moved:
+        with _location_errors():
+            resolved = location.resolve_position(validated)
+            fields = (location.drive_times([resolved])[0] if location.enabled()
+                      else {key: None for key in location.LOCATION_FIELDS})
+            fields.update(lat=resolved.lat, lng=resolved.lng)
+    updated = store.update_resident(resident_id, body, location_fields=fields,
+                                    expected_location=(current.address, current.lat, current.lng))
+    if updated is None:
+        raise HTTPException(status_code=409, detail="Resident changed while saving; reload and retry")
+    return _out(updated)
 
 
 # ---- Calls: Start outage, Call again ----

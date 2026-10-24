@@ -254,8 +254,11 @@ from `call_started_at` is the backstop. No per-turn updates arrive at the server
    `/carecall/phones/<persona>`; personas `daniel-kim`, `ruth-okafor`,
    `maria-lopez`, `linh-tran`; Standard, SecureString, default key.
    Never paste real numbers into chat or commit them.
-2. Load the backend environment, then from `backend/` run `python -m app.seed`.
-   It writes the roster to the configured tables and prints masked numbers.
+2. Load the backend environment, then from `backend/` run
+   `python -m app.seed --demo` (add `--with-location` when `LOCATION_ENABLED=1`).
+   It writes the teammate roster to the configured tables and prints masked numbers.
+   Plain `python -m app.seed` loads the CSV instead, where nobody is callable
+   (README "Seed residents").
    Restart after phone parameters change.
 3. `web/.env.local`: `VITE_API_URL=https://<cloudfront>/api` (or
    `http://localhost:8000` locally). Run `npm run build` for hosting or
