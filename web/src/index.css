@@ -1,67 +1,243 @@
-/* CareCall: big, calm, readable. One accent color; red only for "Help now". */
+/* CareLine operator dashboard: tokens and base styles.
+   Color rule: only a person's state is colored (triage tokens, set from src/map/colors.ts).
+   Everything else is ink on white. Navy is reserved for hospitals and routes. */
+
 :root {
-  --bg: #f6f7f9;
-  --surface: #ffffff;
-  --text: #1c2430;
-  --muted: #5b6573;
-  --border: #dde2e8;
-  --accent: #1f6feb;
-  --accent-soft: #e5efff;
-  --urgent: #c62828;
-  --urgent-solid: #c62828; /* background behind white "Help now" text */
-  --urgent-soft: #fdecec;
-  --soon: #8a5a00;
-  --soon-soft: #fff4dc;
-  --ok: #1e7a45;
-  --ok-soft: #e6f5ec;
-  --neutral-soft: #eef1f4;
+  --paper: #eef1f3;
+  --sheet: #ffffff;
+  --ink: #14202c;
+  --ink-2: #213040;
+  --ink-3: #34465a;
+  --graphite: #56636f;
+  --muted: #7c8893;
+  --rule: #d5dce1;
+  --rule-strong: #b7c1c9;
+  --select: #e7eef5;
+  --focus: #1d3a72;
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+  /* Barlow carries everything computed by code or entered by a person.
+     Source Serif carries only words written by Amazon Bedrock. */
+  --font-ui: 'Barlow Semi Condensed', system-ui, sans-serif;
+  --font-display: 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif;
+  --font-prose: 'Source Serif 4 Variable', Georgia, serif;
+  --font-code: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  font: 17px/1.5 var(--sans);
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
+  --fs-12: 0.75rem;
+  --fs-14: 0.875rem;
+  --fs-16: 1rem;
+  --fs-18: 1.125rem;
+  --fs-21: 1.3125rem;
+  --fs-24: 1.5rem;
+  --fs-36: 2.25rem;
+  --fs-48: 3rem;
+
+  --header-h: 112px;
+  --drawer-w: min(560px, 46vw);
+
+  color-scheme: light;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.35;
+  color: var(--ink);
+  background: var(--sheet);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #12161c;
-    --surface: #1a2029;
-    --text: #e8edf3;
-    --muted: #9aa6b4;
-    --border: #2c3542;
-    --accent: #6ea8fe;
-    --accent-soft: #1d2d47;
-    --urgent: #ff8a80;
-    --urgent-solid: #d32f2f;
-    --urgent-soft: #3a1c1c;
-    --soon: #ffcc66;
-    --soon-soft: #352a12;
-    --ok: #7fd6a2;
-    --ok-soft: #16301f;
-    --neutral-soft: #222a35;
-  }
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  background: var(--bg);
+  min-width: 320px;
+  background: var(--sheet);
 }
 
 h1,
-p {
+h2,
+h3,
+p,
+dl,
+dd,
+ol,
+ul {
   margin: 0;
 }
 
-button {
+ol,
+ul {
+  padding: 0;
+  list-style: none;
+}
+
+button,
+input,
+select,
+textarea {
   font: inherit;
-  min-height: 44px;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- buttons ---- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--ink);
+  border-radius: 4px;
+  background: var(--ink);
+  color: #fff;
+  font-weight: 600;
+  font-size: var(--fs-14);
+  line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
 }
 
-button:focus-visible {
-  outline: 3px solid var(--accent);
-  outline-offset: 2px;
+.btn:hover:not(:disabled) {
+  background: var(--ink-3);
+  border-color: var(--ink-3);
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.btn--quiet {
+  background: var(--sheet);
+  color: var(--ink);
+  border-color: var(--rule-strong);
+}
+
+.btn--quiet:hover:not(:disabled) {
+  background: var(--paper);
+  border-color: var(--graphite);
+}
+
+.btn--small {
+  height: 26px;
+  padding: 0 9px;
+  font-size: var(--fs-12);
+}
+
+/* ---- panels ---- */
+
+.panel {
+  min-width: 0;
+  background: var(--sheet);
+}
+
+.panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  padding: 14px 16px 10px;
+}
+
+.panel-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--fs-21);
+  line-height: 1.1;
+}
+
+.panel-meta {
+  color: var(--graphite);
+  font-size: var(--fs-14);
+}
+
+/* A small, quiet label for provenance and other metadata. */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--paper);
+  color: var(--graphite);
+  font-size: var(--fs-12);
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* Words written by Amazon Bedrock. */
+.prose {
+  font-family: var(--font-prose);
+  font-optical-sizing: auto;
+  line-height: 1.5;
+}
+
+.empty {
+  padding: 24px 16px;
+  color: var(--graphite);
+  font-size: var(--fs-14);
+  max-width: 52ch;
+}
+
+.error-text {
+  color: var(--triage-urgent);
+  font-weight: 600;
+  font-size: var(--fs-14);
+}
+
+.link-id {
+  padding: 0 3px;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-decoration: underline;
+  text-decoration-color: var(--rule-strong);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.link-id:hover {
+  text-decoration-color: var(--ink);
+  background: var(--select);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

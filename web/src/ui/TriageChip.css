@@ -1,0 +1,30 @@
+.tchip {
+  --tc: var(--triage-pending);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 7px 0 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--tc) 13%, white);
+  color: var(--ink);
+  font-weight: 600;
+  font-size: var(--fs-14);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.tchip--urgent { --tc: var(--triage-urgent); }
+.tchip--review { --tc: var(--triage-review); }
+.tchip--unreached { --tc: var(--triage-unreached); background: white; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--tc) 55%, white); }
+.tchip--help { --tc: var(--triage-help); }
+.tchip--pending { --tc: var(--triage-pending); background: var(--paper); color: var(--graphite); font-weight: 500; }
+.tchip--safe { --tc: var(--triage-safe); }
+
+.tchip-rule {
+  margin-left: 2px;
+  font-weight: 500;
+  color: var(--graphite);
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+}

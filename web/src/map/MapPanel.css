@@ -1,0 +1,124 @@
+.map-panel {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  background: #eef0f1;
+}
+
+.map-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+/* Overlays sit in the map's corners, above the canvas. */
+.map-chip,
+.map-legend,
+.map-empty {
+  position: absolute;
+  z-index: 2;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.map-chip {
+  top: 12px;
+  left: 12px;
+  max-width: 340px;
+  padding: 10px 12px 11px;
+  box-shadow: 0 2px 10px rgba(20, 32, 44, 0.1);
+}
+
+.rc-wait {
+  color: var(--graphite);
+  font-size: var(--fs-14);
+}
+
+.rc-main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.rc-big {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--fs-36);
+  line-height: 1;
+}
+
+.rc-lead {
+  color: var(--graphite);
+  font-size: var(--fs-14);
+}
+
+.rc-hosp {
+  margin-top: 2px;
+  font-weight: 600;
+  font-size: var(--fs-16);
+}
+
+.rc-meta {
+  margin-top: 2px;
+  color: var(--graphite);
+  font-size: var(--fs-12);
+}
+
+.rc-meta a {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.map-legend {
+  left: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 11px;
+  padding: 6px 9px;
+  font-size: var(--fs-12);
+  line-height: 1.2;
+}
+
+.lg-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.lg-note {
+  color: var(--graphite);
+  white-space: nowrap;
+}
+
+/* Always visible: every pin is a synthetic resident. */
+.map-badge {
+  position: absolute;
+  z-index: 2;
+  bottom: 12px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 4px;
+  background: var(--ink);
+  color: #fff;
+  font-size: var(--fs-12);
+  font-weight: 600;
+  line-height: 24px;
+  transition: right 0.18s ease-out;
+}
+
+.map-empty {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 320px;
+  padding: 12px 14px;
+  color: var(--graphite);
+  font-size: var(--fs-14);
+}
+
+/* Keep MapLibre's attribution clear of the badge. */
+.map-panel .maplibregl-ctrl-bottom-right {
+  bottom: 40px;
+}

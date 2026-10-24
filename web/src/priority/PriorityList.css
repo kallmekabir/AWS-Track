@@ -1,0 +1,298 @@
+.plist {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--rule);
+}
+
+.plist-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.ptable {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--fs-14);
+}
+
+.ptable th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 6px 8px 7px;
+  border-bottom: 1px solid var(--rule-strong);
+  background: var(--sheet);
+  color: var(--graphite);
+  font-size: var(--fs-12);
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: left;
+  vertical-align: bottom;
+}
+
+.ptable td {
+  padding: 8px;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: middle;
+}
+
+.c-rank { width: 44px; }
+.c-triage { width: 124px; }
+.c-tier { width: 44px; text-align: center !important; }
+.c-runway { width: 140px; }
+.c-calls { width: 46px; text-align: right !important; }
+.c-drive { width: 84px; text-align: right !important; }
+
+/* ---- rows ---- */
+
+.prow {
+  --tab: var(--triage-pending);
+  cursor: pointer;
+}
+
+.prow--urgent { --tab: var(--triage-urgent); }
+.prow--review { --tab: var(--triage-review); }
+.prow--unreached { --tab: var(--triage-unreached); }
+.prow--help { --tab: var(--triage-help); }
+.prow--pending { --tab: var(--rule-strong); }
+.prow--safe { --tab: var(--triage-safe); }
+
+.prow:hover td {
+  background: #f6f8fa;
+}
+
+.prow.is-selected td {
+  background: var(--select);
+  border-bottom-color: var(--rule-strong);
+}
+
+.prow.is-flash td {
+  animation: prow-flash 1.6s ease-out;
+}
+
+@keyframes prow-flash {
+  0%,
+  25% {
+    background: color-mix(in srgb, var(--triage-urgent) 22%, white);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+/* The triage-tag strip: a colored tab at the row's left edge, like the tear-off
+   strip on a paper triage tag. Unreached is an open tab, matching its open-ring pin. */
+td.c-rank {
+  position: relative;
+  padding-left: 14px;
+  padding-right: 6px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--fs-21);
+  line-height: 1;
+  text-align: right;
+}
+
+td.c-rank::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  width: 6px;
+  border-radius: 0 2px 2px 0;
+  background: var(--tab);
+}
+
+.prow--unreached td.c-rank::before {
+  background: var(--sheet);
+  box-shadow: inset 0 0 0 2px var(--tab);
+}
+
+.prow.is-selected td.c-rank::before {
+  width: 8px;
+}
+
+.res-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.res-id {
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: none;
+  font-weight: 700;
+  font-size: var(--fs-16);
+  cursor: pointer;
+}
+
+.res-name {
+  color: var(--graphite);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.res-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 1px;
+  color: var(--graphite);
+  font-size: var(--fs-12);
+  white-space: nowrap;
+}
+
+.res-lang {
+  color: var(--ink);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.tier {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+/* Tier 1 (ventilator or oxygen) reads heaviest. */
+.tier--1 {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: #fff;
+}
+
+.tier--2 {
+  border-color: var(--ink);
+}
+
+.drive-main {
+  display: block;
+  font-weight: 600;
+}
+
+.drive-sub,
+.drive-none {
+  display: block;
+  color: var(--graphite);
+  font-size: var(--fs-12);
+}
+
+/* ---- battery runway ---- */
+
+.rw {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.rw-track {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--paper);
+}
+
+.rw-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 3px;
+  background: var(--ink-3);
+  transition: width 1s linear;
+}
+
+.rw-tick {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 1px;
+  background: var(--rule-strong);
+}
+
+.rw-tick--r2 {
+  top: -3px;
+  bottom: -3px;
+  background: var(--ink);
+}
+
+.rw-over {
+  position: absolute;
+  right: -10px;
+  top: -6px;
+  color: var(--graphite);
+  font-size: var(--fs-12);
+  font-weight: 700;
+}
+
+.rw-text {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: var(--fs-12);
+  line-height: 1;
+}
+
+.rw-text > :first-child {
+  font-weight: 600;
+}
+
+.rw-low {
+  font-weight: 700 !important;
+}
+
+.rw-at {
+  color: var(--graphite);
+}
+
+.rw-none {
+  color: var(--graphite);
+  font-size: var(--fs-12);
+  line-height: 1.25;
+}
+
+.rw-out {
+  font-weight: 700;
+  font-size: var(--fs-12);
+}
+
+.rw-scale {
+  position: relative;
+  display: block;
+  height: 12px;
+  margin-top: 4px;
+}
+
+.rw-scale-mark {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  color: var(--muted);
+  font-size: var(--fs-12);
+  line-height: 12px;
+}
+
+.rw-scale-mark:first-child {
+  transform: none;
+}
+
+.rw-scale-mark:last-child {
+  transform: translateX(-100%);
+}
+
+.rw-scale-mark--r2 {
+  color: var(--ink);
+  font-weight: 600;
+}

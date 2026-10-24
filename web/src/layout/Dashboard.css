@@ -1,0 +1,75 @@
+.dash {
+  min-height: 100vh;
+}
+
+.dash-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+
+/* The work area: one screen tall, list left and map right. */
+.work {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(560px, 41%) minmax(0, 1fr);
+  height: calc(100vh - var(--header-h));
+  min-height: 540px;
+  border-bottom: 1px solid var(--rule);
+  scroll-margin-top: var(--header-h);
+}
+
+/* Map fallback: the list takes the full width, kept to a readable measure and
+   clear of the drawer when one is open. */
+.work--no-map {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.work--no-map .ptable {
+  max-width: 1100px;
+}
+
+.work--no-map.work--drawer .plist {
+  padding-right: var(--drawer-w);
+}
+
+.dash-lower {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  border-bottom: 1px solid var(--rule);
+}
+
+.dash-lower > * + * {
+  border-left: 1px solid var(--rule);
+}
+
+.dash-lower > .panel {
+  scroll-margin-top: var(--header-h);
+}
+
+@media (max-width: 640px) {
+  .dash-header {
+    position: static;
+  }
+
+  .ptable {
+    min-width: 660px;
+  }
+}
+
+@media (max-width: 1000px) {
+  .work {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto 60vh;
+    height: auto;
+  }
+
+  .dash-lower {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dash-lower > * + * {
+    border-left: 0;
+    border-top: 1px solid var(--rule);
+  }
+}

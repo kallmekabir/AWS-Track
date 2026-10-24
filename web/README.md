@@ -1,32 +1,52 @@
-# React + TypeScript + Vite
+# CareLine operator dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React + Vite dashboard for Jane, the duty officer (task graph W01-W10, F07). It polls
+the CareLine API every 3 s; the priority list and the map read the same
+`/outages/{id}/priority` poll.
 
-Currently, two official plugins are available:
+## Run it
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev          # http://localhost:5173 (the map key only allows this origin)
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Settings live in `web/.env.local` (gitignored, see task graph C2):
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `VITE_API_BASE` | unset | API Gateway stage URL. While unset, the dashboard uses mocks |
+| `VITE_USE_MOCKS` | `true` when no API base | Force mocks on with `true` |
+| `VITE_API_KEY`, `VITE_OPERATOR_ID` | `''`, `jane` | Sent as `x-api-key` and `x-operator-id` |
+| `VITE_AWS_REGION`, `VITE_MAP_STYLE`, `VITE_LOCATION_API_KEY` | `us-east-1`, `Monochrome` | Without a map key the map panel hides and the list goes full width |
+
+## Mock mode
+
+`src/api/mock/` is an in-browser stand-in for the API: a scripted Zone 2 (East San
+Jose) outage with 10 synthetic residents, run on the demo clock at 60x. Press
+**Start outage** (Zone 2) and the wave plays out in about a minute; the battery-runway
+recheck for R-137 fires about 3.5 minutes in.
+
+URL presets for rehearsals and screenshots:
+
+- `?mock=running` starts 47 demo minutes into the outage, with every triage group on screen
+- `?mock=215` starts 215 minutes in, just after R-137's battery-runway recheck
+- `?select=R-131` opens a resident (route, drawer) on load
+
+## Layout
+
+| Folder | Task | What it holds |
+| --- | --- | --- |
+| `src/api/` | F07 | Contract types (C8, C9), typed client, `usePoll`, mocks |
+| `src/layout/` | W01 | The dashboard grid and polling |
+| `src/header/` | W02 | Outage, demo clock, counters, start and end, zone strip |
+| `src/priority/` | W03 | Priority list and battery-runway gauges |
+| `src/map/` | W04, W05, W10 | Amazon Location map, canvas-drawn pins, route on selection |
+| `src/drawer/` | W06 | Resident drawer: transcript beside Bedrock JSON, override |
+| `src/tasks/`, `src/feed/` | W07 | Task queue, call log |
+| `src/copilot/` | W08 | Brief, dispatch plan, approve, Ask CareLine |
+| `src/fairness/` | W09 | Reach by language, what we store |
+
+Design rules: only a resident's state is colored (triage colors in `src/map/colors.ts`);
+words written by Bedrock are set in Source Serif, everything computed by code in Barlow;
+the frontend never re-sorts the priority list.

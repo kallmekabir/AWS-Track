@@ -1,0 +1,37 @@
+{
+    "PricingBucket": "Core",
+    "ErrorCount": 0,
+    "RouteMatrix": [
+        [
+            {
+                "Distance": 7987,
+                "Duration": 513
+            },
+            {
+                "Distance": 8575,
+                "Duration": 794
+            }
+        ],
+        [
+            {
+                "Distance": 18061,
+                "Duration": 841
+            },
+            {
+                "Distance": 4217,
+                "Duration": 599
+            }
+        ]
+    ],
+    "RoutingBoundary": {
+        "Geometry": {
+            "BoundingBox": [
+                -122.0,
+                37.20000076293945,
+                -121.69999694824219,
+                37.45000076293945
+            ]
+        },
+        "Unbounded": false
+    }
+}

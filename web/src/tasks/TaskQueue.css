@@ -1,0 +1,86 @@
+.tq {
+  padding: 0 16px 18px;
+}
+
+.tq-error {
+  margin-bottom: 8px;
+}
+
+.tq-group + .tq-group {
+  margin-top: 14px;
+}
+
+.tq-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-weight: 600;
+  font-size: var(--fs-14);
+}
+
+.tq-count {
+  color: var(--graphite);
+  font-weight: 500;
+}
+
+.tq-list {
+  border-top: 1px solid var(--rule);
+}
+
+.task {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0 7px 10px;
+  border-bottom: 1px solid var(--rule);
+  box-shadow: inset 3px 0 0 var(--rule-strong);
+}
+
+/* Urgent alerts stay pinned on top, marked in the urgent color. */
+.tq-group--alert .task {
+  box-shadow: inset 3px 0 0 var(--triage-urgent);
+  background: color-mix(in srgb, var(--triage-urgent) 6%, white);
+}
+
+.tq-group--welfare .task {
+  box-shadow: inset 3px 0 0 var(--triage-unreached);
+}
+
+.task.is-ack {
+  background: var(--sheet);
+}
+
+.task-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.task-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  font-size: var(--fs-14);
+}
+
+.task-type {
+  font-weight: 600;
+}
+
+.task-meta {
+  color: var(--graphite);
+  font-size: var(--fs-12);
+}
+
+.task-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.task-ack {
+  color: var(--graphite);
+  font-size: var(--fs-12);
+  font-weight: 600;
+}
