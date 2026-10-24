@@ -34,27 +34,34 @@ aws login --region us-east-1 --profile carecall
 
 This lasts 12 hours. Run it again whenever you see `ExpiredToken`.
 
-**2. Install the Python packages:**
+**2. Run the setup script:**
+
+```bash
+cd backend
+./setup.sh
+```
+
+It installs the Python packages, creates `backend/.env` (git-ignored), and fills in the
+Amazon Connect IDs by looking them up with *your* AWS sign-in, so no IDs are stored in
+this public repo. At the end it says `Settings OK` and lists which personas already have
+a phone number.
+
+<details>
+<summary>Doing it by hand instead</summary>
 
 ```bash
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt
-```
-
-**3. Create your settings file:**
-
-```bash
 cp .env.example .env
 ```
 
-Open `backend/.env` and fill in the three Amazon Connect values: `CONNECT_INSTANCE_ID`,
-`CONNECT_CONTACT_FLOW_ID` and `CONNECT_SOURCE_NUMBER`. They're IDs, not secrets, but they
-stay out of git: ask in the team chat or copy them from the Amazon Connect console.
-`.env` is git-ignored.
+Then fill in `CONNECT_INSTANCE_ID`, `CONNECT_CONTACT_FLOW_ID` and `CONNECT_SOURCE_NUMBER`
+in `backend/.env`. Ask in the team chat, or find them in the Amazon Connect console.
+</details>
 
-**4. Add your phone number to AWS Parameter Store.** Never paste phone numbers into chat,
+**3. Add your phone number to AWS Parameter Store.** Never paste phone numbers into chat,
 files, Slack or an AI assistant. In the AWS console (region **N. Virginia**), search
 **Parameter Store** → **Create parameter**:
 
@@ -117,7 +124,8 @@ Store, restart terminal 1.
 | Dashboard: "Can't reach the CareCall API" | Terminal 1 isn't running. Start it |
 | `ExpiredToken` or a credentials error | Run `aws login --region us-east-1 --profile carecall`, then restart terminal 1 |
 | `403 … not in Parameter Store` | That persona has no number yet, or terminal 1 started before it was added. Add it, restart terminal 1 |
-| `503 Calling is not set up` | A Connect value is missing in `backend/.env` (step 3) |
+| `503 Calling is not set up` | A Connect value is missing in `backend/.env`. Run `./setup.sh` again |
+| `./setup.sh` says "STOP: …" | Do what the message says (usually `aws login`), then run it again |
 | `uvicorn: command not found` | Run `source .venv/bin/activate` first |
 | You get a second call after hanging up | Expected for now: the test call script doesn't collect answers, so the backend retries once. Reset with the command above |
 
