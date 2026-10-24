@@ -1,0 +1,59 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  CareLine data - the two DynamoDB tables used by the backend/ FastAPI core
+  (Kabir's working backend). On-demand billing, PITR off, DeletionPolicy Delete
+  (demo account). No IAM roles.
+
+Resources:
+  ResidentsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      TableName: careline-residents
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: false
+      Tags:
+        - { Key: Project, Value: careline }
+        - { Key: Owner, Value: infra }
+        - { Key: Env, Value: hackathon }
+
+  CheckinsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      TableName: careline-checkins
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: resident_id
+          AttributeType: S
+        - AttributeName: at
+          AttributeType: S
+      KeySchema:
+        - AttributeName: resident_id
+          KeyType: HASH
+        - AttributeName: at
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: false
+      Tags:
+        - { Key: Project, Value: careline }
+        - { Key: Owner, Value: infra }
+        - { Key: Env, Value: hackathon }
+
+Outputs:
+  ResidentsTableName:
+    Value: !Ref ResidentsTable
+  CheckinsTableName:
+    Value: !Ref CheckinsTable
