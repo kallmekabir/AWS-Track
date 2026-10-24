@@ -1,171 +1,297 @@
-# Set up the calls: Amazon Connect + Lex + the backend on AWS
+# CareCall: Connect, Lex slots and EC2 setup
 
-Do these steps **in order**: each one needs an ID from the one before. Everything lives in **us-east-1**. Allow about 60–90 minutes the first time. Console button names change now and then; if a label differs, look for the closest match.
+**Why no Lambda:** the workshop account denies IAM role creation. `PassRole` is
+limited to `WSParticipantRole`, which trusts no AWS service. Connect and Lex use
+service-linked roles and outbound calls already work. Run the backend as a
+long-lived EC2 process; do not deploy the historical template in
+`docs/reference/template.lambda.yaml`.
 
-**What you end up with:** Jane clicks **Start outage**, and 4 teammates' phones ring at once. A voice asks the 5 questions, and each answer appears on the dashboard as it's spoken.
+Use **us-east-1** throughout. Fixed script text lives in `backend/app/script.py`.
+Only consenting teammates' allow-listed phones may receive real calls.
 
-```text
-Dashboard ──► API Gateway ──► api Lambda (FastAPI) ──► DynamoDB
-                                  │ StartOutboundVoiceContact (x4, at once)
-                                  ▼
-                           Amazon Connect ──rings──► teammate's phone
-                                  │ contact flow: says question 1, then hands over to Lex
-                                  ▼
-                           Lex bot (alias "live") ──each answer──► lex_hook Lambda ──► DynamoDB
-```
+## 1. Connect instance and phone number
 
-Words used below:
+Reuse the working Connect instance and claimed number where possible.
 
-- **Amazon Connect instance:** your own small call center inside AWS. It owns the phone number and the call script.
-- **Contact flow:** the call script, built from blocks ("say this", "listen", "hang up").
-- **Lex bot:** turns what the caller says into text, then asks our `lex_hook` Lambda what to say next.
-- **Alias:** a fixed name (`live`) that points at one published version of the bot.
+1. AWS console → **Amazon Connect** → select the instance. If creating one,
+   use **Store users in Amazon Connect**, create an admin user and enable
+   **Allow outgoing calls**. Keep its service-linked role; do not choose
+   `WSParticipantRole` as a service execution role.
+2. Copy the **Instance ID** from the instance ARN.
+3. Connect admin website → **Channels → Phone numbers**. Reuse or claim a US
+   **DID** number and copy it in E.164 form as `CONNECT_SOURCE_NUMBER`.
+4. Check **Service Quotas → Amazon Connect → Concurrent active calls per
+   instance** permits at least four. If number claiming is blocked, ask the
+   workshop mentors; do not switch to outbound campaigns.
 
----
+## 2. Lex bot without code hooks
 
-## 0. Before you start
+### Known constraint and console acceptance check
 
-- [ ] Every teammate whose phone will ring has said yes, in writing (the team chat is fine).
-- [ ] The AWS CLI and SAM CLI are installed, and you're signed in:
-  ```bash
-  aws login --region us-east-1 --profile carecall      # browser sign-in, lasts 12 h
-  aws sts get-caller-identity --profile carecall       # shows the account
-  sam --version                                         # brew install aws-sam-cli, or:
-                                                        # uv tool install aws-sam-cli --python 3.13 --no-build
-  ```
+AWS documents that `AMAZON.FreeFormInput` is recognized only when explicitly
+elicited, cannot occur in intent sample utterances, and does not switch intents
+while eliciting. Adding `yes` as a sample utterance selects `CheckIn` but does
+**not** populate A1 from that first reply. See the
+[FreeFormInput reference](https://docs.aws.amazon.com/lexv2/latest/dg/built-in-slot-free-form.html).
 
-## 1. Connect instance and phone number (console, ~15 min)
+Consequently, five FreeFormInput slots cannot satisfy the requested single
+safety reply with an ordinary Get customer input entry. The selected all-FreeFormInput
+configuration below repeats the safety question to fill A1. This repeats one
+question rather than promising unsupported first-reply capture. A custom A1 slot that can be
+used in sample utterances, or runtime initialization of slot elicitation, would
+require a design change. No console test pane is accessible from this repository
+session; record the actual result below before declaring phone acceptance done.
 
-1. AWS console → **Amazon Connect** → region **US East (N. Virginia)** → **Create instance**.
-   - Identity: *Store users in Amazon Connect*. Access URL alias: `carecall-demo` (any free name).
-   - Create an admin user for yourself. You'll need it to build the flow.
-   - Telephony: turn on **Allow outgoing calls**. Incoming calls are optional.
-   - Keep the defaults for data storage and create the instance (about 2 minutes).
-2. Open the instance and copy its **Instance ID**, the last part of the instance ARN (`…:instance/<this-part>`).
-3. Log in to the instance's admin website (the access URL) → **Channels → Phone numbers → Claim a number** → **DID (Direct Inward Dialing)** → **United States** → pick any number → Save. Copy it in `+1…` form.
-   - If you see *"You've reached the limit of Phone Numbers"* on the very first number, that's a known limit on new accounts. Ask the AWS mentors **right away**; only AWS Support can lift it.
-4. Check the call limit: AWS console → **Service Quotas → Amazon Connect → Concurrent active calls per instance**. It must be **4 or more**.
+1. AWS console → **Amazon Lex → Create bot → Create a blank bot**.
+   Name **CareCallCheckIn**; language **English (US), en_US**; voice **Joanna**,
+   neural where available; COPPA **No**; idle timeout five minutes. Reuse the
+   Lex service-linked role option. Do not request a new ordinary IAM role.
+2. Create intent **CheckIn**. Add sample utterances, one per line:
 
-**Done when:** you have the instance ID and a claimed `+1…` number.
-
-## 2. First deploy of the backend (terminal, ~5 min)
-
-```bash
-cd backend
-sam build
-sam deploy --guided --profile carecall --region us-east-1
-```
-
-Answer the prompts:
-
-| Prompt | Answer |
-| --- | --- |
-| Stack Name | `carecall-backend` |
-| ConnectInstanceId | the instance ID from step 1 |
-| ConnectContactFlowId | **leave empty for now** (the flow doesn't exist yet) |
-| ConnectSourceNumber | the claimed `+1…` number |
-| ConnectQueueId | leave empty |
-| PhonesSsmPath | keep `/carecall/phones` |
-| DialerAllowList | **leave empty**: teammates' numbers come from Parameter Store (step 6) |
-| AllowedOrigins | keep `http://localhost:5173` (add the Amplify URL later) |
-| MaxLines / NoAnswerSeconds | keep the defaults (4 / 120) |
-| "ApiFunction has no authentication. Is this okay?" | `y` (demo only; see the note below) |
-| Save arguments to configuration file | `y` (saves `samconfig.toml`, which git ignores) |
-
-The last lines print the **Outputs**: `ApiUrl`, `LexHookFunctionName`, `ResidentsTableName` and `CheckinsTableName`. Keep them.
-
-> **Why "no authentication" is acceptable here:** the API can only ring teammates' numbers stored in Parameter Store, and every phone response is masked. Anyone who finds the URL could still ring the 4 of you or reset the demo, so don't show the URL on screen during the video. A shared key on write requests is in NEXT_STEPS.
-
-**Done when:** `curl <ApiUrl>/health` returns `{"ok":true,...}`.
-
-## 3. The Lex bot (console, ~15 min)
-
-1. AWS console → **Amazon Lex** → **Create bot** → **Create a blank bot**.
-   - Name `CareCallCheckIn`. IAM: *Create a role with basic Amazon Lex permissions*. Children's privacy law (COPPA): **No**. Idle session timeout: 5 minutes.
-   - Language **English (US)**, voice **Joanna** (neural if offered). Keep the confidence threshold at 0.40.
-2. Lex asks you to create a first intent. Name it `Placeholder` and give it one sample utterance nobody will say, e.g. `carecall placeholder intent`. Save.
-   - *Why:* a bot can't be built with zero intents. Everything people really say lands in **FallbackIntent**, which sends it to our code.
-3. Open **FallbackIntent** → **Fulfillment** → advanced options → turn on **Use a Lambda function for fulfillment** → Save intent. Do the same for `Placeholder`, just in case.
-4. Click **Build** and wait for "Successfully built".
-5. **Bot versions → Create version** (this makes Version 1).
-6. **Aliases → Create alias**: name `live`, version **Version 1**.
-   - **Do not use TestBotAlias for calls.** It allows only **2 calls at once**, so phones 3 and 4 would fail.
-7. Open alias **live → Languages → English (US)** → Lambda function: the `LexHookFunctionName` from step 2, version `$LATEST` → Save.
-8. Optional test: attach the same Lambda to **TestBotAlias** (Languages → English (US)) and use the **Test** panel. Type `yes`; the bot should reply *"Is your medical device working right now?"*.
-
-**Done when:** the test reply works and a line like `{"residentId": null, "q": 1, "said": "yes"}` appears in the logs:
-
-```bash
-sam logs -n LexHookFunction --stack-name carecall-backend --profile carecall --tail
-```
-
-## 4. The contact flow (Connect admin website, ~15 min)
-
-1. AWS console → your Connect instance → **Flows → Amazon Lex** → region us-east-1, bot `CareCallCheckIn`, alias **`live`** → **Add Amazon Lex Bot**. This lets Connect use the bot.
-2. In the Connect admin website: **Routing → Flows → Create flow**. Name it `CareCall outbound check-in`.
-3. Drag in these blocks and connect them left to right:
-
-| # | Block | Settings |
-| --- | --- | --- |
-| 1 | **Set logging behavior** | Enable flow logging |
-| 2 | **Set voice** | Language English (US), voice **Joanna**, engine Neural |
-| 3 | **Get customer input** | **Text-to-speech:** `Hi, this is CareCall from County Public Health, checking on you during the power outage. Are you safe right now?` (word for word, the same as question 1 in `backend/lambdas/lex_hook.py`). **Amazon Lex tab:** bot `CareCallCheckIn`, alias **`live`**. **Session attributes:** add `residentId`, set dynamically: namespace *User defined*, key `residentId` |
-| 4 | **Disconnect / hang up** | Connect **every** exit of block 3 (Default, Error, any intent) to here |
-
-   - *Why `residentId`:* the backend starts each call with `Attributes={"residentId": "r-001"}`. Passing it to Lex is how `lex_hook` knows **whose** answers it is saving when 4 calls run at once.
-   - Optional: add a second session attribute `x-amz-lex:audio:end-timeout-ms:*:*` = `1500`. It gives people a moment to pause mid-sentence ("about… two hours") before Lex decides they're done.
-   - Don't add a **Set recording** block. Call recording stays off (README, Safety and privacy).
-4. **Save → Publish.** Under the flow name, open **Show additional flow information** and copy the **flow ID**, the last part of the ARN (`…/contact-flow/<this-part>`).
-
-**Done when:** the flow shows as Published and you have its ID.
-
-## 5. Second deploy: give the backend the flow ID
-
-```bash
-cd backend
-sam build && sam deploy --guided --profile carecall --region us-east-1
-```
-
-Press Enter to keep every saved answer, and paste the flow ID at **ConnectContactFlowId**.
-
-## 6. Put the demo residents in DynamoDB
-
-1. `cp backend/.env.example backend/.env`, then fill in `RESIDENTS_TABLE` and `CHECKINS_TABLE` from the outputs, plus the Connect IDs if you want to place calls from your laptop.
-2. **Each teammate adds their own number** (never paste numbers into chat, Slack, files or Claude). AWS console → **Systems Manager → Parameter Store → Create parameter**:
-   - Name: `/carecall/phones/` + their persona: `daniel-kim`, `ruth-okafor`, `maria-lopez` or `linh-tran`
-   - Tier **Standard** (free), type **SecureString** (encrypted), KMS key `alias/aws/ssm` (default)
-   - Value: their number as `+1XXXXXXXXXX`
-3. Run:
-   ```bash
-   cd backend && source .venv/bin/activate
-   python -m app.seed
+   ```text
+   yes
+   no
+   I'm okay
+   not really
+   I'm fine
+   kind of
+   yes I am safe
+   no I'm not safe
+   I am alright
+   I'm doing okay
+   everything is fine
+   I don't know
+   I am not sure
    ```
-   It lists who may be called, with numbers masked (`+1-XXX-XXX-1234`). Numbers from Parameter Store are allowed automatically; restart the backend after anyone adds or changes a number.
 
-**Done when:** `curl "<ApiUrl>/queue?zone=A"` lists 8 people, all "NOT_CALLED".
+   Do not use `{A1}` in sample utterances with FreeFormInput: Lex forbids it.
+3. Add five **required** slots, all type **AMAZON.FreeFormInput**, with priority
+   **A1, A2, A3, A4, A5**. No initial response or confirmation question.
+   A1's fallback prompt is `Are you safe right now?`; A2–A5 match
+   `script.QUESTIONS[2]` through `[5]` word for word:
 
-## 7. Test: one phone, then four
+   | Slot | Prompt |
+   | --- | --- |
+   | A1 | Are you safe right now? |
+   | A2 | Is your medical device working right now? |
+   | A3 | How many full backup tanks or batteries do you have? |
+   | A4 | About how many hours can you go before you run out? |
+   | A5 | Do you need anything else, like medicine, food, a ride, a place to charge, or an oxygen delivery? |
 
-1. **One phone:** `curl -X POST <ApiUrl>/residents/r-001/call`. Daniel's teammate's phone rings, hears question 1, and answers all 5.
-   Expected: `GET /queue` shows Daniel as `PERSON_CHECK` with 5 answers in `transcript`.
-2. **Reset:** `curl -X POST "<ApiUrl>/demo/reset?zone=A"`.
-3. **Four phones:** run the dashboard (`web/.env.local`: `VITE_API_URL=<ApiUrl>`, then `npm run dev`) and click **Start outage**. All 4 phones ring within a second or two, and the rows show *Ringing… → Question 2 of 5 → …* as people answer.
+   Keep a single retry on no input with `Sorry, I didn't catch that. ` followed
+   by the same question. Configure slot-failure paths to close the conversation
+   rather than collecting later answers into the wrong slot.
+4. **CheckIn → Closing response**:
 
-## Troubleshooting
+   ```text
+   Thank you. Our team has your answers. If anything changes or you feel unsafe, hang up and call 911.
+   ```
 
-| What you see | Likely cause → fix |
+5. Create intent **Emergency**, no slots, with every `EMERGENCY_PHRASES` entry
+   plus variants (one per line):
+
+   ```text
+   can't breathe
+   cannot breathe
+   can not breathe
+   not breathing
+   chest pain
+   heart attack
+   emergency
+   ambulance
+   call 911
+   nine one one
+   help me
+   i fell
+   i've fallen
+   I can't breathe
+   I cannot breathe
+   I'm having chest pain
+   I'm having a heart attack
+   this is an emergency
+   send an ambulance
+   please call 911
+   please help me
+   I have fallen
+   ```
+
+   **Emergency → Closing response**:
+
+   ```text
+   Please hang up and call 911 now. I'm alerting our medical team.
+   ```
+
+6. Disable initialization/validation and fulfillment code hooks on **every
+   intent**, including fallback. No function is attached to any alias.
+   Configure fallback to close and return to the flow.
+7. **Build**. In the Lex **Test** pane, reset the conversation for each of
+   `yes`, `no`, `I'm okay`, `not really`, `I'm fine`, and `kind of`. Inspect
+   the intent and slots after the first reply. Check whether A1 has a value
+   and whether the next prompt is A2. With documented FreeFormInput behavior,
+   expect A1 to be empty and the repeated safety prompt. Answer that prompt,
+   then A2–A5; verify all five slots and the closing response.
+8. Reset and test each emergency utterance as the first reply. Also test
+   `I can't breathe` while eliciting A5: it is collected as A5, not an intent
+   switch. The backend escalates it to **HELP_NOW / R0 after disconnect**;
+   this configuration cannot promise the emergency message mid-dialog.
+9. **Bot versions → Create version**. **Aliases → Create alias** named
+   **live**, pointing at that version. Rebuild, version and repoint `live`
+   after later changes. Calls always use **live**, never **TestBotAlias** (limited to two concurrent calls).
+
+Console acceptance record (pending a human console session):
+
+| Test | Result |
 | --- | --- |
-| `503 Calling is not set up: missing …` | A Connect parameter is empty → redo step 5 |
-| `403 … not in Parameter Store` | The persona has no parameter under `/carecall/phones/`, or the backend started before it was added → step 6.2, then restart |
-| `502 Amazon Connect refused the call: DestinationNotAllowedException` | Outbound calling is off on the instance, or the number's country isn't allowed |
-| Phone rings, question 1 plays, then silence or a hang-up | The `live` alias has no Lambda (step 3.7), the FallbackIntent fulfillment hook is off (3.3), or the bot wasn't rebuilt and versioned after the change. Check the `sam logs` from step 3 |
-| Phones 1–2 work, 3–4 get a fast busy tone or fail | The flow uses TestBotAlias (2-call limit) instead of `live`, or the concurrent-calls quota is under 4 (step 1.4) |
-| Nobody answers and the row stays "Calling now" | The dashboard must be open: it checks for ended calls on each 3-second poll. A missed call becomes "No answer (1 try). Calling again" |
-| Dashboard says "Can't reach the CareCall API" | Wrong `VITE_API_URL`, or the dashboard's address isn't in `AllowedOrigins` |
+| First reply selects CheckIn; repeat safety prompt for A1 | Selected design; console verification pending |
+| Repeat safety prompt fills A1, then A2–A5 | Not console verified |
+| All five slot values and closing response | Not console verified |
+| Emergency entry returns Emergency | Not console verified |
+| Emergency phrase in A5 becomes HELP_NOW after disconnect | Backend unit test passes; phone test pending |
 
-## After judging: clean up (stops the charges)
+## 3. Contact flow: slots to persisted contact attributes
 
-1. Connect admin website → **Phone numbers** → release the number **first**.
-2. AWS console → Amazon Connect → delete the instance.
-3. Amazon Lex → delete `CareCallCheckIn`.
-4. `cd backend && sam delete --stack-name carecall-backend --profile carecall`. This deletes the Lambdas, the API and both DynamoDB tables.
+1. AWS Connect console → instance → **Flows → Amazon Lex** → add
+   **CareCallCheckIn**, region us-east-1, alias **live**.
+2. Connect admin website → **Routing → Flows → Create flow**.
+   Name **CareCall outbound check-in**. Use these blocks:
+
+   | Order | Block | Settings / next step |
+   | --- | --- | --- |
+   | 1 | Set logging behavior | Enable flow logging → 2 |
+   | 2 | Set voice | Joanna, Neural, English (US); enable language attribute en_US → 3 |
+   | 3 | Set contact attributes | User defined: `answered=yes` → 4 |
+   | 4 | Get customer input | TTS below; Lex CareCallCheckIn, alias live; session attribute `residentId` dynamically from User defined / residentId → 5 |
+   | 5 | Set contact attributes | Persist intent and populated slots as below → 6 |
+   | 6 | Check contact attributes | User defined / intent: Emergency → 7; CheckIn → 8; FallbackIntent, default or error → 9 |
+   | 7 | Play prompt | `Please hang up and call 911 now. I'm alerting our medical team.` → 8 |
+   | 8 | Disconnect / hang up | End contact; CheckIn already spoke its closing response |
+   | 9 | Set contact attributes | User defined: `outcome=no_input` → 8 |
+
+   **Get customer input TTS**, exactly `script.QUESTIONS[1]`:
+
+   ```text
+   Hi, this is CareCall from County Public Health, checking on you during the power outage. Are you safe right now?
+   ```
+
+   Add intent exits **CheckIn**, **Emergency**, and **FallbackIntent** to the
+   input block. Route successful exits through the attribute-copy stage and
+   branch; route input **Error/default** to `outcome=no_input` and disconnect.
+
+3. In the attribute-copy stage, use **Set dynamically**, namespace **Lex**.
+   These are the source paths and user-defined destination keys:
+
+   | Source | Destination |
+   | --- | --- |
+   | `$.Lex.IntentName` | `intent` |
+   | `$.Lex.Slots.A1` | `a1` |
+   | `$.Lex.Slots.A2` | `a2` |
+   | `$.Lex.Slots.A3` | `a3` |
+   | `$.Lex.Slots.A4` | `a4` |
+   | `$.Lex.Slots.A5` | `a5` |
+
+   Save intent before slots. Use separate Set contact attributes blocks for
+   optional slot copies, continuing on a missing slot's Error exit, so a
+   missing A1 on Emergency does not discard the intent or other answers.
+   These paths are documented in
+   [Set contact attributes](https://docs.aws.amazon.com/connect/latest/adminguide/set-contact-attributes.html).
+   `residentId` is set by the backend when dialing and remains a session
+   attribute for continuity; the backend identifies results by contact ID.
+4. Add no invocation blocks. Add no recording blocks; recording stays off.
+   Route setup-block errors to the no-input/disconnect path. **Save → Publish**,
+   then copy the flow ID from **Show additional flow information**.
+
+**Partial-call limitation:** slots are copied when Get customer input returns.
+If the caller hangs up inside Lex before the copy stage runs, earlier slots may
+not be persisted to contact attributes. The collector saves every answer that
+is present, but cannot recover slots never copied. Include a mid-call hang-up
+in phone acceptance; do not claim per-turn persistence or live question progress.
+The Emergency closing response and the flow's Emergency prompt both use the
+required text, so an Emergency entry can hear it twice.
+
+## 4. EC2 backend and CloudFront (Himanshu)
+
+Himanshu creates the tables, process environment and hosting:
+
+- **Residents**: string partition key `id`.
+- **Checkins**: string partition key `resident_id`, string sort key `at`.
+- `/etc/careline/backend.env`: keys from `backend/.env.example`. Set
+  `RESIDENTS_TABLE`, `CHECKINS_TABLE`, Connect IDs and caller ID, and
+  `ALLOWED_ORIGINS=https://<cloudfront>,http://localhost:5173`.
+  Omit the local `AWS_PROFILE` setting when the server's AWS access uses
+  another mechanism. The process needs Connect StartOutboundVoiceContact,
+  DescribeContact and GetContactAttributes, table access and the existing
+  Parameter Store phone lookup access. This guide creates no IAM roles.
+- CloudFront sends `/api/...` to EC2 port **8000** after stripping `/api`.
+  For example `/api/queue` reaches `/queue`. Forward query strings, allow
+  API write methods, and disable caching on the API behavior.
+
+From `backend/`:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --env-file /etc/careline/backend.env
+```
+
+If the service manager loads the environment file (for example via systemd
+`EnvironmentFile=/etc/careline/backend.env`), the command is simply:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+Run **one worker** so the background checker and line limit share a process.
+Check `/health` locally and `https://<cloudfront>/api/health` through CloudFront.
+Every five seconds the lifespan task checks disconnected contacts, saves results
+and refills lines, even with the dashboard closed. Polls still check too.
+`DescribeContact.DisconnectTimestamp` is authoritative; `NO_ANSWER_SECONDS=300`
+from `call_started_at` is the backstop. No per-turn updates arrive at the server.
+
+## 5. Demo residents and dashboard
+
+1. Each consenting teammate enters their own number in Parameter Store:
+   `/carecall/phones/<persona>`; personas `daniel-kim`, `ruth-okafor`,
+   `maria-lopez`, `linh-tran`; Standard, SecureString, default key.
+   Never paste real numbers into chat or commit them.
+2. Load the backend environment, then from `backend/` run `python -m app.seed`.
+   It writes the roster to the configured tables and prints masked numbers.
+   Restart after phone parameters change.
+3. `web/.env.local`: `VITE_API_URL=https://<cloudfront>/api` (or
+   `http://localhost:8000` locally). Run `npm run build` for hosting or
+   `npm run dev` locally. Vite reads this setting at build time; rebuild when
+   changing it. The default is localhost:8000.
+
+## 6. Acceptance: one phone, then four
+
+1. Call your own persona: `POST /residents/r-001/call`. Complete the console
+   acceptance checks above first. Complete the five-slot dialogue, then verify
+   `GET /queue` contains five answers and **PERSON_CHECK** with
+   `All 5 answers in. Waiting for ranking`.
+2. Test Emergency at entry, an emergency phrase in A5, a partial call and no
+   answer. An emergency becomes **HELP_NOW**, rule **R0**; a partial transcript
+   becomes **PERSON_CHECK**; two missed calls become **HELP_SOON**, rule **NA**.
+3. Reset with `POST /demo/reset?zone=A`. Warn the team, then click **Start
+   outage**: four allow-listed phones ring together. Results appear after
+   disconnect. Close the dashboard during calls and verify results later to
+   exercise the background checker.
+4. For an offline rehearsal set `CONNECT_DRY_RUN=1`, empty both table names and
+   `PHONES_SSM_PATH`, and mark synthetic demo residents `allow_call=true` via
+   PATCH. Start outage; after about five to ten seconds `/queue` contains a
+   five-answer transcript per completed fake call, with no real phones rung.
+
+## Troubleshooting and cleanup
+
+| Symptom | Check |
+| --- | --- |
+| Missing Connect settings / 503 | Server environment and published flow ID |
+| 403 not allow-listed | Persona's Parameter Store entry and consent; restart server |
+| Calls 3–4 fail | Published live alias and Connect concurrency quota |
+| First reply repeats safety question | FreeFormInput constraint described in section 2 |
+| Results have no answers | Inspect attribute-copy paths and whether hang-up bypassed them |
+| Row remains CALLING after disconnect | Server logs, GetContactAttributes permission and background task |
+| Dashboard cannot reach API | VITE_API_URL, CloudFront prefix rewrite, CORS origins and API cache behavior |
+
+After judging, release the phone number before deleting the Connect instance,
+delete the bot, and have Himanshu stop EC2/CloudFront and remove the demo tables
+when their data is no longer needed.

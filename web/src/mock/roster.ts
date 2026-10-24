@@ -8,7 +8,7 @@
 // four teammate personas are callable; here all eight are, so the line refill shows.
 import type { Status } from '../api'
 
-/** Word for word from backend/lambdas/lex_hook.py (QUESTIONS). */
+/** Word for word from backend/app/script.py (QUESTIONS). */
 export const QUESTIONS = [
   'Hi, this is CareCall from County Public Health, checking on you during the power outage. Are you safe right now?',
   'Is your medical device working right now?',

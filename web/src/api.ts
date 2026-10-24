@@ -1,5 +1,6 @@
 // All calls from the Vite dashboard to the CareCall backend live here.
 // Set the address in web/.env.local:   VITE_API_URL=http://localhost:8000
+// Hosted: VITE_API_URL=https://<cloudfront>/api (CloudFront strips /api at the origin).
 // With VITE_USE_MOCKS=true (or ?mock in the address) the same functions answer from
 // src/mock/ instead, so the dashboard runs without the backend.
 import { config } from './config'

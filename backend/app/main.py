@@ -2,9 +2,12 @@
 
 Run locally:   uvicorn app.main:app --reload --env-file .env    (from the backend/ folder)
 Try it:        http://localhost:8000/docs
-On AWS:        Lambda handler = app.main.handler   (API Gateway HTTP API in front, see template.yaml)
+On EC2:        uvicorn app.main:app --host 0.0.0.0 --port 8000
 """
+import asyncio
+import logging
 import os
+from contextlib import asynccontextmanager
 from typing import Optional
 
 from botocore.exceptions import BotoCoreError, ClientError
@@ -15,10 +18,36 @@ from app import calling, store
 from app.models import (CheckInIn, OutageIn, Resident, ResidentIn, ResidentOut,
                         ResidentPatch)
 
-app = FastAPI(title="CareCall API", version="0.2.0")
+_log = logging.getLogger(__name__)
+
+
+async def _check_calls_forever():
+    while True:
+        try:
+            # boto3 and the store are synchronous; keep them off the event loop.
+            await asyncio.to_thread(calling.check_calls, force=True)
+        except Exception:
+            _log.exception("Background call check failed; will retry next interval")
+        await asyncio.sleep(calling.CHECK_EVERY_SECONDS)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    checker = asyncio.create_task(_check_calls_forever())
+    try:
+        yield
+    finally:
+        checker.cancel()
+        try:
+            await checker
+        except asyncio.CancelledError:
+            pass
+
+
+app = FastAPI(title="CareCall API", version="0.2.0", lifespan=lifespan)
 
 # Lets the Vite dashboard (another port/domain) call this API from the browser.
-# Add the Amplify address to ALLOWED_ORIGINS when the dashboard is deployed.
+# Add the CloudFront URL to ALLOWED_ORIGINS when the dashboard is deployed.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
@@ -119,11 +148,3 @@ def get_queue(zone: Optional[str] = None):
     """The ranked list for the dashboard (it asks every 3 seconds)."""
     calling.check_calls()
     return [_out(r) for r in store.queue(zone)]
-
-
-# Lambda entry point. Imported lazily so local runs don't need mangum installed.
-try:
-    from mangum import Mangum
-    handler = Mangum(app)
-except ImportError:  # pragma: no cover
-    handler = None

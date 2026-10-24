@@ -21,8 +21,13 @@ Sparthill hackathon, October 2026.
 ## Run the backend (works today)
 
 The backend (`backend/`, Python) places the phone calls; the dashboard (`web/`) has the
-**Start outage** button. Both run on your laptop. (The hackathon AWS account can't deploy
-Lambda functions, so we don't deploy the backend there.)
+**Start outage** button. Both run locally, and Himanshu hosts the long-lived backend
+on EC2 behind CloudFront.
+
+**Why no Lambda:** the workshop account blocks IAM role creation. The only passable
+role, `WSParticipantRole`, trusts no AWS service. Connect and Lex still work through
+service-linked roles. Do not deploy `docs/reference/template.lambda.yaml`; it is an
+archived production reference, with historical handlers and packaging.
 
 ### One-time setup
 
@@ -53,7 +58,7 @@ a phone number.
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements-dev.txt
+pip install -r requirements.txt
 cp .env.example .env
 ```
 
@@ -127,7 +132,68 @@ Store, restart terminal 1.
 | `503 Calling is not set up` | A Connect value is missing in `backend/.env`. Run `./setup.sh` again |
 | `./setup.sh` says "STOP: …" | Do what the message says (usually `aws login`), then run it again |
 | `uvicorn: command not found` | Run `source .venv/bin/activate` first |
-| You get a second call after hanging up | Expected for now: the test call script doesn't collect answers, so the backend retries once. Reset with the command above |
+| You get a second call after hanging up | If no answers were saved, the backend retries once after everyone else's first call. Check the Lex slot-to-contact-attribute copies in SETUP.md |
+
+### Answers and hosting
+
+`app/script.py` holds the five fixed questions. Lex `CareCallCheckIn` (en_US,
+**live** alias) collects A1–A5, and the Connect flow copies intent and slots into
+contact attributes. After disconnect, `app/call_results.py` reads them using
+GetContactAttributes and saves a transcript and status. Emergency intent or an
+emergency phrase in any answer → **HELP_NOW / R0**; complete or partial answers →
+**PERSON_CHECK**; no answers → a retry, then **HELP_SOON / NA** after two misses.
+Phase 2 Bedrock will replace the `extract_facts(transcript)` placeholder.
+
+The FastAPI lifespan checker runs every five seconds even with no dashboard open.
+Dashboard polls also check calls; overlapping checks are skipped and a guarded
+store transition prevents duplicate results. DescribeContact's disconnect timestamp
+ends the call, with a 300-second backstop measured from call start. Answers appear
+after disconnect; no per-question updates arrive.
+
+**Console acceptance remains open:** AWS FreeFormInput slots cannot fill A1 from
+the intent-triggering first reply or switch to Emergency during slot elicitation.
+The guide documents a repeated safety-question fallback and the tests needed;
+a caller who hangs up before the flow copies slots may leave no saved answers.
+See [the setup guide's Lex constraints](connect/SETUP.md#2-lex-bot-without-code-hooks).
+
+On EC2, install `backend/requirements.txt` and load the environment from
+`/etc/careline/backend.env` (same keys as `backend/.env.example`). With the service
+manager loading that file, run from `backend/`:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+Use one worker. Himanshu creates **Residents** (PK `id`) and **Checkins**
+(PK `resident_id`, SK `at`); set their names in `RESIDENTS_TABLE` and
+`CHECKINS_TABLE`. CloudFront serves `https://<cloudfront>/api/...` and strips
+`/api` before forwarding to port 8000. Set
+`ALLOWED_ORIGINS=https://<cloudfront>,http://localhost:5173` and build the dashboard
+with `VITE_API_URL=https://<cloudfront>/api` in `web/.env.local`. Its default is
+`http://localhost:8000`; rebuild Vite when changing the URL. Disable caching for
+CloudFront's API behavior and forward query strings and write methods.
+
+### Offline check
+
+```bash
+cd backend
+source .venv/bin/activate
+python -m unittest discover -s tests -t . -v
+CONNECT_DRY_RUN=1 RESIDENTS_TABLE= CHECKINS_TABLE= PHONES_SSM_PATH= uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+DRY_RUN still requires `allow_call=true`. In another terminal, opt a synthetic
+resident into the rehearsal, then start an outage:
+
+```bash
+curl -X PATCH localhost:8000/residents/r-001 -H 'Content-Type: application/json' -d '{"allow_call":true}'
+curl -X POST localhost:8000/outages -H 'Content-Type: application/json' -d '{"zone":"A"}'
+# After about 5–10 seconds, with no intervening dashboard polls:
+curl "localhost:8000/queue?zone=A"
+```
+
+The resident has **PERSON_CHECK**, `All 5 answers in. Waiting for ranking`, and
+five transcript entries. No real phone rings.
 
 More detail: [`connect/SETUP.md`](connect/SETUP.md) (full AWS setup) and
 [`docs/NEXT_STEPS.md`](docs/NEXT_STEPS.md) (what's done and next).
@@ -151,9 +217,8 @@ spends dialing is an hour in which someone's battery runs down without anyone kn
 1. **Jane triggers an outage** for a zone, or a simulated outage event fires.
 2. **CareLine calls residents** in that zone, highest medical risk first, in English or
    Spanish (Hindi if time allows), through Amazon Connect.
-3. **A voice bot asks four short questions:** are you safe, does your device have power,
-   how many hours of battery are left, and do you need medicine, food, transport or a
-   place to charge.
+3. **A voice bot asks five short questions:** are you safe, is your device working,
+   how many backups do you have, how many hours are left, and what else do you need.
 4. **Bedrock understands the answers**, including messy or mixed-language speech, and
    turns them into validated JSON.
 5. **Deterministic rules decide triage** (R0–R7), not the model. Urgent cases go to a
@@ -176,48 +241,38 @@ spends dialing is an hour in which someone's battery runs down without anyone kn
 | **Operator copilot** | Converse API tool use (Claude Sonnet) with read-only tools over live call data writes zone briefs and dispatch drafts | Read-only tools; every priority must cite resident IDs the tools returned; Jane approves every plan |
 | **Grounded resident answers** | Knowledge Bases `RetrieveAndGenerate` answers questions like "where can I charge my machine?" from verified resource sites | Bedrock Guardrails block medical advice and ungrounded answers; blocked questions go to a person |
 
-## Architecture
+## Workshop architecture
 
 ```mermaid
 flowchart TD
-  dash["Operator dashboard<br/>React on S3 + CloudFront"] -->|trigger, read, override| api["API Gateway + Lambda"]
-  api -->|ask / brief| copilot["Bedrock operator copilot<br/>read-only tools on DynamoDB"]
-  api --> eb["EventBridge<br/>outage started / ended"]
-  api <-->|read / write| ddb[("DynamoDB<br/>residents, calls, tasks, audit")]
-  eb -->|starts call wave| sf["Step Functions + Lambda<br/>rules R0–R7 set triage"]
-  sf --> ddb
-  sf -->|dialer places the call| connect["Amazon Connect<br/>contact flow, Polly voices"]
-  connect <--> phone["Resident phone"]
-  connect -->|urgent transfer| op["Human operator<br/>Connect agent workspace"]
-  connect -->|speech| lex["Amazon Lex V2<br/>en_US, es_US, hi_IN"]
-  lex -->|each turn| hook["Lambda lex_hook<br/>redacts PII, validates JSON"]
-  hook --> br["Amazon Bedrock<br/>extract answers; KB + Guardrails for Q&A"]
-  hook -->|call result + task token| ddb
-  copilot -.->|tool calls| ddb
-  dash -->|map tiles, API key| maps["Amazon Location Maps"]
-  eb -->|outage started| geo["Lambda geo<br/>nearest hospital by drive time"]
-  api -->|route on click| geo
-  geo -->|route matrix, route| routes["Amazon Location Routes"]
-  geo -->|hospital access| ddb
+  dash["React dashboard"] -->|"/api requests"| cf["CloudFront"]
+  cf -->|"strip /api"| api["EC2: FastAPI / uvicorn :8000"]
+  api <-->|"residents and check-ins"| ddb[("DynamoDB")]
+  api -->|"StartOutboundVoiceContact"| connect["Amazon Connect"]
+  connect <--> phone["Consenting teammate's phone"]
+  connect <--> lex["Lex V2: CheckIn A1–A5 / Emergency, live alias"]
+  connect -->|"copy intent and slots"| attrs["Connect contact attributes"]
+  api -->|"DescribeContact, then GetContactAttributes"| attrs
+  api --> results["call_results: transcript, rules, save, dial_next"]
+  results -.->|"Phase 2: extract_facts"| bedrock["Amazon Bedrock"]
+  dash --> maps["Amazon Location map tiles"]
 ```
 
-### AWS services and why
-
-| Service | Why |
+| Service | Workshop job |
 | --- | --- |
-| Amazon Bedrock (Converse API) | The AI core: understands answers, runs the copilot, answers resident questions |
-| Bedrock Knowledge Bases | Grounds resident answers in the verified list of resource sites |
-| Bedrock Guardrails | Blocks medical advice and ungrounded answers |
-| Amazon Connect | Real calls to landlines and basic phones, live transfer to a human; web calling as fallback |
-| Amazon Lex V2 | Structured voice dialog in English, Spanish and Hindi |
-| Amazon Polly | Neural voices for the fixed scripts |
-| AWS Step Functions | Durable waits for retries and battery-runway callbacks |
-| Amazon EventBridge | Outage and check-in events that drive the workflows |
-| AWS Lambda | Dialer, Lex hook, triage rules, copilot tools, API |
-| Amazon DynamoDB | State, with TTL for automatic transcript deletion |
-| Amazon Location Service | Maps for the live San Jose map; Routes for each resident's drive time to the nearest hospital and the route shown on click |
-| API Gateway, S3, CloudFront | Operator API and dashboard hosting |
-| Kiro | Spec-driven development, steering files and eval hooks |
+| Amazon Connect | Real outbound calls, fixed prompts and persistent contact attributes |
+| Amazon Lex V2 | Five answer slots and Emergency intent, with no code hooks |
+| Amazon Polly | Joanna neural voice for fixed scripts |
+| Amazon EC2 | Long-lived API, dialer and background call checker |
+| Amazon CloudFront | Dashboard hosting and `/api` proxy to port 8000 |
+| Amazon DynamoDB | Persistent residents and check-ins; table names from env |
+| Amazon Bedrock | Phase 2 fact extraction through `app/call_results.py:extract_facts` |
+| Amazon Location Service | Map tiles today; supplier drive times in Phase 2 |
+| Amazon SNS | Planned emergency alert email |
+
+The broader CareLine architecture (copilot, multilingual calls and workflows) is
+planned in [`docs/careline-plan.md`](docs/careline-plan.md). The workshop runs no
+execution functions and creates no IAM roles.
 
 ## Triage rules
 
@@ -272,48 +327,26 @@ changes.
 .kiro/specs/           Kiro specs per workstream (generated in Kiro)
 .plans/                Feature specs (amazon-location-map-spec.md)
 docs/careline-plan.md  Full implementation plan
-schemas/               JSON schemas shared by Lambdas and the eval
+schemas/               JSON schemas for extraction and the eval
 data/                  hospitals.csv, residents.sample.csv; private/ is gitignored (planned)
 scripts/               seed.py, build_geo_data.py (planned)
 infra/                 CDK stacks (planned)
-lambdas/               dialer, lex_hook, triage, copilot, api, geo, shared layer (planned)
+lambdas/               Historical scaffold placeholders; no workshop runtime
 eval/                  scenarios and harness (planned)
-backend/               Python backend that places the calls (works today, see "Run the backend")
-connect/SETUP.md       Amazon Connect, Lex and deploy setup steps
+backend/               EC2 FastAPI API, dialer, script and Connect attribute collector
+connect/SETUP.md       Connect, Lex slots, contact attributes, EC2 and acceptance steps
+docs/reference/template.lambda.yaml  Historical production template; never workshop-deploy
 kb/                    Knowledge Base source documents (planned)
 web/                   React + Vite operator dashboard (Start outage + live list today)
 ```
 
-## Getting started (planned)
+## Future deployment automation
 
-> To run what works today, use [Run the backend](#run-the-backend-works-today) above.
-> The steps below are the planned full CDK deployment.
-
-Prerequisites: an AWS account in **us-east-1** with Amazon Connect and Bedrock model
-access, Python 3.12, Node 20, AWS CDK v2, and Kiro.
-
-```bash
-git clone <this repo> && cd careline
-scripts/bootstrap.sh               # toolchain, credentials, pinned dependencies, CDK bootstrap
-python scripts/build_geo_data.py   # validates data/*.csv, writes hospitals GeoJSON/JSON
-(cd infra && cdk synth --strict && cdk diff --all)
-(cd infra && cdk deploy --all)      # run after reviewing the diff
-python scripts/validate_setup.py
-python scripts/seed.py             # idempotent synthetic residents and resource sites
-scripts/configure_web.sh           # local ignored map config, build, and web deploy
-```
-
-`scripts/seed.py` reads `data/private/residents.csv` (gitignored, shared out of band) and
-falls back to `data/residents.sample.csv`. `scripts/configure_web.sh` reads the deployed
-map key into ignored `web/.env.local`, then builds and deploys the web app. Never commit
-the key.
-
-The scripts and CDK stacks are planned automation. Account/model access, phone-number
-claiming, any quota or registration prompts, and the final consented Connect test call
-remain human-gated. If number claiming is blocked, use the web-call fallback. The
-deployment should create the Connect instance, Lex bot and contact-flow draft; review
-and publish the flow before placing the test call. Never commit `.env` or
-`web/.env.local`.
+Use [Run the backend](#run-the-backend-works-today) for the working workshop path.
+Future infrastructure automation belongs in an account that permits role creation;
+the archived template is a historical reference and requires handler/packaging
+updates before reuse. The broader planned scripts and CDK stacks are described in
+`docs/careline-plan.md`. Never commit `.env` or `web/.env.local`.
 
 ## Building with Kiro
 
@@ -337,5 +370,6 @@ _TBD (handle to be confirmed by organizers)_.
 ## Teardown
 
 After judging: release the phone number, delete the Connect instance and the Knowledge
-Base, and run `cdk destroy --all` (this also deletes the map API key, which expires
-Oct 31 regardless).
+Base if one was created. Have Himanshu stop the EC2 service, remove CloudFront hosting
+and delete the demo tables after their data is no longer needed. Follow
+`connect/SETUP.md` for the workshop cleanup order.

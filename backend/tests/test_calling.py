@@ -90,9 +90,9 @@ class EndedCallsTest(unittest.TestCase):
     def test_hang_up_partway_needs_a_person(self):
         fake = use_fake_connect(self, max_lines=1)
         calling.start_outage("A")
-        store.transition("r-001", Status.CALLING, {"transcript": [
-            {"q": 1, "question": "Are you safe?", "answer": "yes"}]})
-        fake.hung_up.add(store.get_resident("r-001").contact_id)
+        contact_id = store.get_resident("r-001").contact_id
+        fake.attributes[contact_id] = {"answered": "yes", "intent": "CheckIn", "a1": "yes"}
+        fake.hung_up.add(contact_id)
         calling.check_calls(force=True)
 
         daniel = store.get_resident("r-001")
@@ -105,7 +105,8 @@ class EndedCallsTest(unittest.TestCase):
         calling.start_outage("A")
         daniel = store.get_resident("r-001")
         store.transition("r-001", Status.CALLING, {
-            "call_started_at": daniel.call_started_at - timedelta(seconds=calling.NO_ANSWER_SECONDS + 1)})
+            "call_started_at": daniel.call_started_at - timedelta(seconds=calling.NO_ANSWER_SECONDS + 1),
+            "last_activity_at": calling._now()})
         calling.check_calls(force=True)
         self.assertEqual(store.get_resident("r-001").missed_calls, 1)
 
