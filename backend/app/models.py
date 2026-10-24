@@ -107,6 +107,9 @@ class Resident(ResidentIn):
     ai: Optional[dict] = Field(
         default=None, description="How Bedrock did: model_id, latency_ms, ok, problems")
     transcript: list[Answer] = Field(default_factory=list)
+    cl_segments: list[str] = Field(
+        default_factory=list,
+        description="Contact Lens CUSTOMER turns collected during the call, in order")
     # The current (or last) phone call
     contact_id: Optional[str] = Field(default=None, description="Amazon Connect ContactId")
     call_started_at: Optional[datetime] = None

@@ -238,7 +238,20 @@ def check_calls(force: bool = False) -> None:
             return
         _last_check = time.monotonic()
         for resident in store.list_residents():
-            if resident.status != Status.CALLING or not _call_ended(resident):
+            if resident.status != Status.CALLING:
+                continue
+            if not _call_ended(resident):
+                # Call still live: collect Contact Lens customer turns now, in case the
+                # real-time segments stop being available after disconnect.
+                try:
+                    segs = call_results.contact_lens_segments(resident.contact_id)
+                    new = [s for s in segs if s not in resident.cl_segments]
+                    if new:
+                        store.transition(resident.id, Status.CALLING,
+                                         {"cl_segments": resident.cl_segments + new},
+                                         contact_id=resident.contact_id)
+                except _CALL_ERRORS:
+                    pass  # best-effort; finish_call does a final fetch too
                 continue
             try:
                 call_results.finish_call(resident)

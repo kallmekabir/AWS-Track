@@ -8,7 +8,7 @@ from botocore.exceptions import ClientError
 
 from app import call_results, calling, script, store
 from app.models import Status
-from tests.fakes import use_fake_connect
+from tests.fakes import FakeContactLens, use_fake_connect
 from tests.test_understand import GOOD, FakeBedrock, use_fake_bedrock
 
 
@@ -230,3 +230,49 @@ class RankingWiringTest(unittest.TestCase):
         self.assertRegex(out.phone, r"^\+1-XXX-XXX-\d{4}$")
         self.assertNotIn("5550000", out.phone)
         self.assertTrue(out.ai["ok"])
+
+
+class SpeechCheckInTest(unittest.TestCase):
+    """Contact Lens natural-speech path: no keypad slots, CUSTOMER turns from Contact Lens."""
+
+    def setUp(self):
+        self.fake = use_fake_connect(self, max_lines=1)
+        calling.start_outage("A")
+        self.resident = store.get_resident("r-001")
+        self.contact_id = self.resident.contact_id
+
+    def test_speech_segments_are_ranked_with_facts(self):
+        use_fake_bedrock(self, FakeBedrock(GOOD))  # safe/device yes, 1 tank, 2h
+        self.fake.contact_lens.set_turns(self.contact_id, [
+            "I'm okay", "yes it's working", "one tank left", "maybe two hours", "I need a ride"])
+        # No keypad attributes: answered=yes, intent=CheckIn, but no a1..a5.
+        self.fake.attributes[self.contact_id] = {"answered": "yes", "intent": "CheckIn"}
+        self.fake.hung_up.add(self.contact_id)
+        calling.check_calls(force=True)
+
+        done = store.get_resident("r-001")
+        self.assertIn(done.rule_id, ("R1", "R2", "R3"))     # ranked, not a missed call
+        self.assertIsNotNone(done.facts)
+        self.assertTrue(done.ai["ok"])
+        answers = [a.answer for a in done.transcript]
+        self.assertEqual(answers[0], "I'm okay")            # AGENT turn filtered out
+        self.assertEqual(len(answers), 5)
+        self.assertEqual(store.list_checkins("r-001")[0]["transcript"][0]["answer"], "I'm okay")
+
+    def test_segments_collected_during_call_survive_disconnect(self):
+        use_fake_bedrock(self, FakeBedrock(GOOD))
+        self.fake.contact_lens.set_turns(self.contact_id, [
+            "I'm okay", "yes it's working", "one tank left", "maybe two hours", "I need a ride"])
+        calling.check_calls(force=True)  # call still live -> collect segments
+        self.assertIn("I'm okay", store.get_resident("r-001").cl_segments)
+
+        # Segments disappear after disconnect, but we kept them.
+        self.fake.contact_lens.turns[self.contact_id] = []
+        self.fake.attributes[self.contact_id] = {"answered": "yes", "intent": "CheckIn"}
+        self.fake.hung_up.add(self.contact_id)
+        store.transition("r-001", Status.CALLING, {
+            "call_started_at": calling._now() - timedelta(seconds=calling.NO_ANSWER_SECONDS + 1)})
+        calling.check_calls(force=True)
+        done = store.get_resident("r-001")
+        self.assertIn(done.rule_id, ("R1", "R2", "R3"))
+        self.assertEqual(done.transcript[0].answer, "I'm okay")

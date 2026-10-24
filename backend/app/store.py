@@ -26,7 +26,7 @@ CHECKINS_TABLE = os.getenv("CHECKINS_TABLE", "")
 _LIVE_FIELDS = ("status", "rule_id", "reason", "hours_left", "time_to_spare", "runs_out_at",
                 "recheck_at", "emergency", "facts", "ai",
                 "transcript", "contact_id", "call_started_at", "last_activity_at",
-                "current_question", "missed_calls", "last_error")
+                "current_question", "missed_calls", "last_error", "cl_segments")
 
 
 def _now() -> datetime:

@@ -1,9 +1,60 @@
 """Collect Lex answers from Connect attributes after a contact disconnects, then rank.
 
+Two input paths, same ranking:
+- Keypad / Lex: answers arrive as contact attributes a1..a5 (fetch()).
+- Natural speech: Contact Lens transcribes the customer; the CUSTOMER turns are read
+  from the real-time analysis segments (contact_lens_segments()).
+
 Bedrock only extracts facts (app/understand.py); app/rules.py decides the level.
 """
+import os
+
+import boto3
+from botocore.config import Config
+from botocore.exceptions import ClientError
+
 from app import calling, rules, script, store, understand
 from app.models import Resident, Status
+
+INSTANCE_ID = os.getenv("CONNECT_INSTANCE_ID", "")
+
+_cl_client = None
+
+
+def _contact_lens():
+    """One connectcontactlens client, reused. Separate from the dialer's connect client."""
+    global _cl_client
+    if _cl_client is None:
+        _cl_client = boto3.client("connectcontactlens", config=Config(
+            retries={"total_max_attempts": 2, "mode": "standard"}))
+    return _cl_client
+
+
+def contact_lens_segments(contact_id: str) -> list[str]:
+    """CUSTOMER turns from Contact Lens real-time analysis, in spoken order.
+
+    Available while the contact is live; may stop after disconnect, so the caller also
+    collects during the call. Returns [] on any error (try again next poll)."""
+    if calling.DRY_RUN or not contact_id:
+        return []
+    turns = []
+    try:
+        token = None
+        while True:
+            kwargs = {"InstanceId": INSTANCE_ID, "ContactId": contact_id, "MaxResults": 100}
+            if token:
+                kwargs["NextToken"] = token
+            resp = _contact_lens().list_realtime_contact_analysis_segments(**kwargs)
+            for seg in resp.get("Segments", []):
+                t = seg.get("Transcript")
+                if t and t.get("ParticipantRole") == "CUSTOMER" and (t.get("Content") or "").strip():
+                    turns.append((t.get("BeginOffsetMillis", 0), t["Content"].strip()))
+            token = resp.get("NextToken")
+            if not token:
+                break
+    except ClientError:
+        return []
+    return [c for _, c in sorted(turns, key=lambda x: x[0])]
 
 
 def fetch(contact_id: str) -> dict:
@@ -60,6 +111,24 @@ def finish_call(resident: Resident) -> bool:
         return False  # start_call has claimed the resident but has not finished dialing
     attrs = fetch(resident.contact_id)
     transcript = to_transcript(attrs)
+    source = "call"
+
+    # Natural-speech path: no keypad slots, but Contact Lens heard the customer.
+    # Use segments collected during the call (resident.cl_segments) plus a final fetch.
+    if not transcript:
+        segs = list(resident.cl_segments) + contact_lens_segments(resident.contact_id)
+        # de-dup while keeping order
+        seen, ordered = set(), []
+        for s in segs:
+            if s not in seen:
+                seen.add(s); ordered.append(s)
+        if ordered:
+            # One CUSTOMER turn per question, in spoken order (up to 5).
+            qs = list(script.QUESTIONS.items())
+            transcript = [{"q": qs[i][0], "question": qs[i][1], "answer": ordered[i]}
+                          for i in range(min(len(ordered), len(qs)))]
+            source = "speech"
+
     emergency = attrs.get("intent") == "Emergency" or any(
         script.is_emergency(a["answer"]) for a in transcript)
 
@@ -85,7 +154,7 @@ def finish_call(resident: Resident) -> bool:
     if done is None:
         return False
     store.add_checkin(resident.id, {
-        "source": "call", "status": done.status.value, "rule_id": done.rule_id,
+        "source": source, "status": done.status.value, "rule_id": done.rule_id,
         "reason": done.reason, "facts": done.facts, "ai": done.ai,
         "transcript": transcript})
     calling.dial_next(done.zone)
