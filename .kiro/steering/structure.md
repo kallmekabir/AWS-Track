@@ -6,7 +6,7 @@ backend/
   app/models.py        Registry, live-state and API data shapes
   app/store.py         DynamoDB or memory; guarded transitions and check-ins
   app/calling.py       Connect dialer, line filling, disconnect checking
-  app/call_results.py  Contact attributes -> transcript -> status; Phase 2 extract_facts hook
+  app/call_results.py  Answers (keypad/Contact Lens) -> Bedrock rank_call -> status
   app/script.py        Fixed five questions, closing and emergency phrases
   app/seed.py          Demo roster and optional teammate phones
   app/phones.py        Existing Parameter Store phone lookup
@@ -20,7 +20,7 @@ backend/
 web/                   React + Vite; api.ts, map/, priority/, drawer/
 connect/SETUP.md       Lex/Connect console instructions and acceptance limits
 infra/                 Recorded infrastructure state, operations and ownership rules
-schemas/               Existing extraction schema reference; follow RANKING.md for Phase 2
+schemas/               Extraction schema Bedrock must return (checkin.json)
 .plans/                Active workshop task graph and map plan
 docs/careline-plan.md  Active implementation plan
 docs/NEXT_STEPS.md     Phase and acceptance checklist
@@ -29,7 +29,7 @@ docs/infra/            Hosting handoff
 docs/reference/       Historical broader plans and template.lambda.yaml; do not execute
 lambdas/               Historical scaffold and geo fixtures, no workshop runtime
 eval/                  Future transcript/ranking evaluation
-kb/                    Historical Knowledge Base placeholder
+lambdas/geo/           Location route fixtures (used by tests); no Lambda runtime
 ```
 
 Keep application logic in importable `backend/app/` modules so unittest and the

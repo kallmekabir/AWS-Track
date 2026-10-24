@@ -96,7 +96,7 @@ Rules for the prompt: never guess. If the person didn't say it, use `null` or `"
 
 ## Round 2: rules after the call
 
-These Phase 2 rules exist in `app/rules.py` with offline tests, but their call-result integration remains pending. Today `call_results.extract_facts` returns None: the collector detects emergency intent/phrases directly, leaves complete or partial transcripts as PERSON_CHECK, and applies missed-call rule NA. The rules below are unchanged by the hosting architecture.
+These rules live in `app/rules.py` and run on every answered call: `call_results.rank_call` calls Bedrock (`understand.extract_facts`) then `rules.rank_after_call`. An emergency intent or phrase forces R0 regardless of Bedrock; no answers apply missed-call rule NA.
 
 Check the rules from top to bottom. **The first one that matches decides the level.** Save its rule ID with the result.
 
@@ -104,7 +104,7 @@ Check the rules from top to bottom. **The first one that matches decides the lev
 | --- | --- | --- | --- |
 | R0 | `emergency` is true, or `safe == "no"` | **Help now** | "Said it's an emergency" / "Said they're not safe" |
 | R1 | `device_working == "no"` and `backup_left == 0` | **Help now** | "Device off, no backups left" |
-| R2 | `time_to_spare` is known and under 1 hour | **Help now** | "Supplier {drive} min away, {spare} min to spare" |
+| R2 | `time_to_spare` is known and under 1 hour | **Help now** | "Hospital {drive} min away, {spare} min to spare" |
 | R3 | `backup_left == 1`, or `hours_left` is known and under 4 | **Help soon** | "1 backup left" / "{hours} h left" |
 | R4 | `confidence < 0.7`, or group 1 and `hours_left` is unknown | **A person must check** | "Answers unclear" |
 | R5 | `needs` is not empty | **Needs supplies** | "Needs {needs}" |
@@ -156,14 +156,14 @@ def rank_after_call(facts, resident, drive_minutes):
 
 **Round 2.**
 
-| Person | Device | What they said | Backups left | Hours left | Supplier drive | Time to spare | Rule | Level |
+| Person | Device | What they said | Backups left | Hours left | Hospital drive | Time to spare | Rule | Level |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Daniel Kim | Ventilator | "It's off. The backup didn't kick in." | 0 | 0 | 25 min | none | R1 | Help now |
 | Ruth Okafor | Oxygen | "One tank left, about two hours." | 1 | 2 | 70 min | 50 min | R2 | Help now |
 | Maria Lopez | Oxygen | "One tank, maybe two hours. I can't drive." | 1 | 2 | 15 min | 1 h 45 min | R3 | Help soon |
 | Linh Tran | Oxygen | "Three tanks, around nine hours. A place to charge would help." | 3 | 9 | 20 min | 8 h 40 min | R5 | Needs supplies |
 
-**Dashboard order:** Daniel, Ruth, Maria, Linh. Ruth and Maria said almost the same thing, but Ruth's supplier is much farther away, so she is ahead of Maria. That is the whole point of time to spare.
+**Dashboard order:** Daniel, Ruth, Maria, Linh. Ruth and Maria said almost the same thing, but Ruth's hospital is much farther away, so she is ahead of Maria. That is the whole point of time to spare.
 
 ---
 

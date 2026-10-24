@@ -1,13 +1,43 @@
 # CareCall: Connect, Lex slots and EC2 setup
 
 **Why no Lambda:** the workshop account denies IAM role creation. `PassRole` is
-limited to `WSParticipantRole`, which trusts no AWS service. Connect and Lex use
-service-linked roles and outbound calls already work. Run the backend as a
+limited to `WSParticipantRole`, which trusts no AWS service. Connect uses its
+service-linked role and outbound calls already work. Run the backend as a
 long-lived EC2 process; do not deploy the historical template in
 `docs/reference/template.lambda.yaml`.
 
 Use **us-east-1** throughout. Fixed script text lives in `backend/app/script.py`.
 Only consenting teammates' allow-listed phones may receive real calls.
+
+## Working call paths (no Lex bot)
+
+A Lex NLU bot is **not possible in this workshop account**: `CreateBot` requires
+`iam:PassRole` on the Lex service-linked role, and the account policy denies it. This was
+**proven on the API** (the CLI `CreateBot` returned `AccessDeniedException: iam:PassRole`),
+not merely assumed; the Lex console runs the same action under the same role, so it is
+expected to fail the same way (not separately tested). The Lex sections below are kept for
+a production account that allows role creation.
+
+Both working paths are built by API (no console, no Lambda) and write the same contact
+attributes `app/call_results.py` reads. Point `CONNECT_CONTACT_FLOW_ID` at one of them.
+
+1. **Natural speech via Amazon Contact Lens (built, next step).**
+   `python connect/build_speech_flow.py` generates a flow that enables Contact Lens
+   real-time analytics (records + transcribes the caller) and asks the five questions with
+   a listening pause each. `call_results.contact_lens_segments()` reads the CUSTOMER turns
+   after disconnect. Built and unit-tested; a live call still needs to confirm segments
+   reach Bedrock (keypad is the demo path meanwhile).
+2. **Keypad / DTMF (live demo path).** `python connect/build_keypad_flow.py` generates a
+   flow that maps each key to readable text in `a1..a5` (e.g. `a4 = "2 hours"`), sets
+   `answered=yes`/`intent=CheckIn`, plays the closing line and disconnects. No Lex, no
+   Lambda, no role.
+
+Create either with `aws connect create-contact-flow --type CONTACT_FLOW` (published on
+create), tag `Project=careline`, and put the returned flow ID in `CONNECT_CONTACT_FLOW_ID`.
+
+---
+
+## Lex bot (production only — not possible in the workshop account)
 
 ## 1. Connect instance and phone number
 

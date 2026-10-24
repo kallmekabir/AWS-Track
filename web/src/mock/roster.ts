@@ -28,7 +28,7 @@ export interface MockPerson {
   device_group: number
   backups_on_file: number
   backup_hours_each: number
-  /** Drive from the nearest supplier (Phase 2, app/location.py). */
+  /** Drive from the nearest hospital (Phase 2, app/location.py). */
   drive_minutes: number | null
   /** The five answers, or null when the person never picks up. */
   answers: string[] | null
@@ -67,7 +67,7 @@ export const ROSTER: MockPerson[] = [
       'About two hours, I think.',
       "Someone to bring more oxygen. I can't get there in time.",
     ],
-    result: { status: 'HELP_NOW', rule_id: 'R2', reason: 'Supplier 70 min away, 50 min to spare', hours_left: 2,
+    result: { status: 'HELP_NOW', rule_id: 'R2', reason: 'Hospital 70 min away, 50 min to spare', hours_left: 2,
       facts: { safe: 'yes', device_working: 'yes', backup_left: 1, hours_left: 2, needs: ['oxygen_delivery'], emergency: false, confidence: 0.9 },
       ai: { model_id: 'us.amazon.nova-lite-v1:0', latency_ms: 712, ok: true, problems: [] } },
   }),

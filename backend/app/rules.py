@@ -44,7 +44,7 @@ def rank_after_call(facts: Facts, resident, drive_minutes: Optional[float],
                     now: Optional[datetime] = None) -> Decision:
     """Rules R0-R6. `resident` needs `device_group` and `backup_hours_each`.
 
-    `drive_minutes` is the shortest drive from a supplier, or None if unknown.
+    `drive_minutes` is the shortest drive from a hospital, or None if unknown.
     """
     now = now or datetime.now(timezone.utc)
     hours = facts.hours_left
@@ -73,7 +73,7 @@ def rank_after_call(facts: Facts, resident, drive_minutes: Optional[float],
         if drive_minutes is None:
             reason = f"{_minutes(spare)} min to spare (drive time unknown)"
         else:
-            reason = f"Supplier {round(drive_minutes)} min away, {_minutes(spare)} min to spare"
+            reason = f"Hospital {round(drive_minutes)} min away, {_minutes(spare)} min to spare"
         return decide(Status.HELP_NOW, "R2", reason)
     if facts.backup_left == 1:
         return decide(Status.HELP_SOON, "R3", "1 backup left")

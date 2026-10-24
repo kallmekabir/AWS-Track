@@ -86,7 +86,7 @@ Priority order for AWS: **1. Amazon Connect (calls) → 2. Amazon Bedrock (under
 
 Using Bedrock is the entry ticket for this track, so it must be central and visible in the demo.
 
-- **Where:** Phase 2 replaces the `extract_facts(transcript)` placeholder in `app/call_results.py`, wiring the existing `app/understand.py` and `app/rules.py` helpers, which have offline tests. It returns `None` today.
+- **Where:** `app/call_results.rank_call` calls `app/understand.extract_facts` (live, Nova Lite) then `app/rules.rank_after_call`. This runs on every answered call and on the typed-transcript endpoint. (`extract_facts` is wired — it is no longer a `None` placeholder.)
 - **How:** the Converse API with a forced tool (`record_checkin`), so Bedrock must return JSON in our exact shape. Temperature 0.
 - **Model:** an Amazon Nova text model. Read the ID from the `BEDROCK_MODEL_ID` environment variable; never hard-code it.
 - **Output shape:** defined in `docs/RANKING.md` ("What Bedrock returns").
@@ -108,7 +108,7 @@ Using Bedrock is the entry ticket for this track, so it must be central and visi
 2. `app/calling.py` takes the first **4** people (`MAX_LINES=4`) and calls `connect.start_outbound_voice_contact` once per person, back to back. The calls start within a second of each other, so all 4 phones ring together. It passes `residentId` as a contact attribute so later steps know who is on the line.
 3. **Amazon Connect** rings the phone and runs our contact flow, which hands the call to the **Lex bot**.
 4. **Lex CheckIn** collects five required slots A1–A5; Connect copies `$.Lex.IntentName` and `$.Lex.Slots.A1..A5` to user-defined `intent` and `a1..a5` attributes. No intent or alias has a code hook. `app/script.py` holds the unchanged script. The FreeFormInput first-reply, emergency-switch and partial-hang-up limits are documented in `connect/SETUP.md`; console/phone acceptance remains open.
-5. After `DescribeContact` reports a disconnect, **`app/call_results.py`** fetches contact attributes, saves the transcript and a check-in, then calls `dial_next`. Emergency intent or emergency phrases in any answer → HELP_NOW / R0; five answers → PERSON_CHECK waiting for ranking; some answers → PERSON_CHECK; no answer → missed-call rules. Phase 2 Bedrock goes in `extract_facts`.
+5. After `DescribeContact` reports a disconnect, **`app/call_results.py`** reads the answers (keypad attributes `a1..a5`, or Contact Lens CUSTOMER segments), then `rank_call` runs Bedrock extraction + rules R0–R6/NA, saves the level, rule ID, `facts` and `ai`, and calls `dial_next`. Emergency intent or an emergency phrase in any answer → HELP_NOW / R0 regardless of Bedrock; no answers → missed-call rules (NA on the 2nd miss).
 6. When a call ends (answered, or the start-time backstop of `NO_ANSWER_SECONDS` expires), `calling.dial_next(zone)` starts the next person, so 4 lines stay busy until everyone is reached.
 
 **Rules for `app/calling.py`:**

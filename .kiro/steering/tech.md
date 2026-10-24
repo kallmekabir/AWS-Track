@@ -25,12 +25,11 @@
   No per-turn backend progress. Console/phone acceptance is still pending.
 - CONNECT_DRY_RUN=1 completes fake five-answer contacts without phones; consent
   remains required. Other residents remain uncalled; there is no simulator function.
-- Phase 2 Bedrock goes in `call_results.extract_facts(transcript)`, currently None,
+- Bedrock extraction is live in `call_results.rank_call`, which calls
   wiring the existing `app/understand.py` and `app/rules.py` helpers. Use BEDROCK_MODEL_ID (Amazon Nova plan),
   Converse with forced record_checkin tool, and RANKING.md's facts shape. Plain
   Python `app/rules.py` decides levels; `app/ranking.py` sets round 1 order. The
-  helpers are tested offline, but the collector hook still returns None; model
-  access alone is not integration.
+  helpers run on every answered call and the typed-transcript endpoint.
 - Amazon Location: MapLibre browser map today. Planned `app/location.py` computes
   supplier-to-resident drive time for time to spare. No geo function or shared
   layer. See `.plans/amazon-location-map-spec.md`; hospital routing is deferred.
