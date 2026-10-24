@@ -72,9 +72,17 @@ export const DEVICE_GROUP_TEXT: Record<number, string> = {
   3: 'Group 3: other devices',
 }
 
-/** "Oxygen concentrator · group 1 · 1 backup on file" (main's list wording). */
+/** Round 1 calling order in plain words; the group number stays in the DEVICE_GROUP_TEXT tooltip. */
+const DEVICE_GROUP_ORDER: Record<number, string> = {
+  1: 'breathing device, called first',
+  2: 'called second',
+  3: 'called third',
+}
+
+/** "Oxygen concentrator · breathing device, called first · 1 backup on file" (main's list wording). */
 export function deviceLine(r: Resident): string {
   const backups =
     r.backups_on_file === null ? '' : ` · ${r.backups_on_file} ${r.backups_on_file === 1 ? 'backup' : 'backups'} on file`
-  return `${r.device} · group ${r.device_group}${backups}`
+  const order = DEVICE_GROUP_ORDER[r.device_group] ?? `group ${r.device_group}`
+  return `${r.device} · ${order}${backups}`
 }

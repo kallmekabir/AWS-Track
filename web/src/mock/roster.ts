@@ -57,8 +57,8 @@ export const ROSTER: MockPerson[] = [
     result: { status: 'HELP_NOW', rule_id: 'R1', reason: 'Device off, no backups left', hours_left: 0 },
   }),
   person({
-    id: 'r-002', name: 'Ruth Okafor', phone4: '0103', address: '9 Birch Ct, San Jose, CA',
-    lat: 37.338, lng: -121.886, device: 'Oxygen concentrator', device_group: 1,
+    id: 'r-002', name: 'Ruth Okafor', phone4: '0103', address: 'Mt Hamilton Rd, Mt Hamilton, CA 95140',
+    lat: 37.36, lng: -121.6, device: 'Oxygen concentrator', device_group: 1,
     backups_on_file: 1, backup_hours_each: 2, drive_minutes: 70, extra: 2,
     answers: [
       "Yes, I'm okay.",
