@@ -1,0 +1,11 @@
+id,name,phone,address,lat,lng,zone,device,device_group,backups_on_file,backup_hours_each,allow_call
+r-001,Ana Reyes,+14085550151,"3982 Park Ave, San Jose, CA 95123",37.265143,-121.837796,A,CPAP machine,3,1,8,false
+r-002,Tom Becker,+14085550152,"297 Maple Ave, San Jose, CA 95131",37.395197,-121.887555,A,Powered wheelchair,3,1,10,false
+r-003,Mai Tran,+14085550153,"1597 Capitol Expy, San Jose, CA 95116",37.350266,-121.849988,A,Powered bed,3,1,6,false
+r-004,Raj Mehta,+14085550154,"2178 Tully Rd, San Jose, CA 95148",37.334995,-121.800528,A,CPAP machine,3,2,8,false
+r-005,Lena Ortiz,+14085550155,"1876 Lincoln Ave, San Jose, CA 95116",37.361106,-121.846397,A,Infusion pump,2,2,6,false
+r-006,Sam Kim,+14085550156,"2394 Park Ave, San Jose, CA 95120",37.207838,-121.8763,A,Oxygen concentrator,1,2,2,false
+r-007,Dolores Cruz,+14085550157,"2439 Tully Rd, San Jose, CA 95128",37.313199,-121.94208,A,Home dialysis,2,1,4,false
+r-008,Harold Nguyen,+14085550158,"2343 Maple Ave, San Jose, CA 95116",37.363986,-121.851696,A,Oxygen concentrator,1,3,3,false
+r-009,Rosa Delgado,+14085550159,"2635 Tully Rd, San Jose, CA 95112",37.352652,-121.875371,A,Home ventilator,1,0,4,false
+r-010,Walter Chen,+14085550160,"1506 McKee Rd, San Jose, CA 95148",37.331111,-121.779515,A,Oxygen concentrator,1,1,2,false

@@ -122,6 +122,34 @@ curl -X POST "localhost:8000/demo/reset?zone=A"        # everyone back to "Not c
 Stop with `Ctrl+C` in each terminal. After anyone adds or changes a number in Parameter
 Store, restart terminal 1.
 
+### Seed residents from CSV
+
+From `backend/`, with the virtual environment active:
+
+```bash
+python -m app.seed --dry-run       # validate data/Residents_simple.csv
+python -m app.seed                 # write the CSV residents
+python -m app.seed --csv /path/to/residents.csv
+python -m app.seed --demo          # use the original teammate demo roster
+```
+
+The default CSV contains 10 synthetic residents with calls disabled. Set
+`RESIDENTS_CSV` in `backend/.env` to choose another default file. All rows are
+validated before any writes. The header uses the `ResidentIn` fields plus `id`;
+required columns are `id,name,phone,address,lat,lng,device`. IDs must have the form
+`r-001`. Blank device groups are inferred, and blank backup counts/hours stay unknown.
+
+Set both `RESIDENTS_TABLE` and `CHECKINS_TABLE` in `backend/.env` to use the existing
+DynamoDB store: Residents has partition key `id` (String), and Checkins has partition
+key `resident_id` (String) and sort key `at` (String). Without `RESIDENTS_TABLE`, the
+seed command writes only to process memory, which disappears when it exits. The API
+continues to load its demo roster in memory mode.
+
+Re-running the seed replaces records with matching IDs, including their live outage
+state; it leaves other residents and check-in history in place. Writes are individual
+operations, so a database failure can leave a partially seeded table. Use this command
+to initialize demo data before an outage.
+
 ### If something goes wrong
 
 | You see | Fix |

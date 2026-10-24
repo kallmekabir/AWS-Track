@@ -12,19 +12,32 @@ Fallback for offline work: backend/seed.local.json, which git ignores:
 
 Each number gives that persona the phone and allow_call=True.
 
-Write the roster to the store (DynamoDB when RESIDENTS_TABLE is set in backend/.env):
+Seed data/Residents_simple.csv into the store (DynamoDB when RESIDENTS_TABLE
+is set in backend/.env). Run these commands from backend/:
 
     python -m app.seed
+    python -m app.seed --csv /path/to/residents.csv --dry-run
+    python -m app.seed --demo
+
+RESIDENTS_CSV can also select the CSV path. CSV ids are preserved on re-runs;
+matching residents are replaced, including their live outage state.
 """
+import argparse
+import csv
 import json
+import math
 import os
+import re
 import sys
 from pathlib import Path
+
+from pydantic import ValidationError
 
 from app import phones as phone_store
 from app.models import Resident, ResidentIn, mask_phone
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
+DEFAULT_CSV_PATH = BACKEND_DIR.parent / "data" / "Residents_simple.csv"
 LOCAL_SEED_PATH = Path(os.getenv("SEED_LOCAL_PATH", BACKEND_DIR / "seed.local.json"))
 
 # All made up. Phones are 555 numbers that are never on the dialer allow-list.
@@ -94,19 +107,84 @@ def seed_residents(path: Path = LOCAL_SEED_PATH) -> list[Resident]:
     return residents
 
 
-def main() -> int:
+def load_csv_residents(path: Path) -> list[Resident]:
+    """Validate the whole CSV before writing anything, preserving its resident ids."""
+    required = {"id", "name", "phone", "address", "lat", "lng", "device"}
+    allowed = set(ResidentIn.model_fields) | {"id"}
+    optional = {"device_group", "backups_on_file", "backup_hours_each"}
+    residents = []
+    seen = set()
+    with path.open(newline="", encoding="utf-8-sig") as source:
+        reader = csv.DictReader(source)
+        headers = reader.fieldnames or []
+        if len(headers) != len(set(headers)):
+            raise ValueError(f"{path.name}: duplicate column names")
+        missing = required - set(headers)
+        if missing:
+            raise ValueError(f"{path.name}: missing columns: {', '.join(sorted(missing))}")
+        unknown = set(headers) - allowed
+        if unknown:
+            raise ValueError(f"{path.name}: unknown columns: {', '.join(sorted(unknown))}")
+        for row in reader:
+            location = f"{path.name}: row {reader.line_num}"
+            if None in row or any(value is None for value in row.values()):
+                raise ValueError(f"{location}: column count does not match header")
+            data = {key: value.strip() for key, value in row.items()}
+            for key in optional:
+                if data.get(key) == "":
+                    del data[key]
+            for key in required:
+                if not data[key]:
+                    raise ValueError(f"{location}: {key} is required")
+            if not re.fullmatch(r"r-[0-9]+", data["id"]):
+                raise ValueError(f"{location}: id must have the form r-001")
+            if data["id"] in seen:
+                raise ValueError(f"{location}: duplicate resident id")
+            try:
+                resident = Resident.model_validate(data)
+            except ValidationError as exc:
+                # Report fields and reasons without echoing phone numbers or row data.
+                details = "; ".join(
+                    f"{'.'.join(map(str, error['loc']))}: {error['msg']}"
+                    for error in exc.errors(include_input=False)
+                )
+                raise ValueError(f"{location}: {details}") from None
+            if not (-90 <= resident.lat <= 90 and -180 <= resident.lng <= 180):
+                raise ValueError(f"{location}: latitude or longitude is out of range")
+            if resident.backup_hours_each is not None and not math.isfinite(resident.backup_hours_each):
+                raise ValueError(f"{location}: backup_hours_each must be finite")
+            seen.add(resident.id)
+            residents.append(resident)
+    if not residents:
+        raise ValueError(f"{path.name}: no residents found")
+    return residents
+
+
+def main(argv: list[str] | None = None) -> int:
     try:
         from dotenv import load_dotenv  # also installed with the server runtime
         load_dotenv(BACKEND_DIR / ".env")
     except ImportError:
         pass
-    from app import store  # imported after .env is loaded, so it sees RESIDENTS_TABLE
+    parser = argparse.ArgumentParser(description="Seed residents from a CSV file.")
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument("--csv", type=Path, help="Resident CSV (default: RESIDENTS_CSV or data/Residents_simple.csv)")
+    source.add_argument("--demo", action="store_true", help="Seed the original demo roster instead")
+    parser.add_argument("--dry-run", action="store_true", help="Validate and count residents without writing")
+    args = parser.parse_args(argv)
 
     try:
-        residents = seed_residents()
-    except ValueError as e:
+        residents = (seed_residents() if args.demo else load_csv_residents(
+            args.csv or Path(os.getenv("RESIDENTS_CSV") or DEFAULT_CSV_PATH)))
+    except (OSError, ValueError, csv.Error) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
+    if args.dry_run:
+        print(f"Validated {len(residents)} residents; no data written.")
+        return 0
+
+    from app import store  # imported after validation and .env loading
+
     for resident in residents:
         store.save_resident(resident)
     where = os.getenv("RESIDENTS_TABLE") or "memory (RESIDENTS_TABLE not set, nothing was saved)"
