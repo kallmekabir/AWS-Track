@@ -94,7 +94,7 @@ export function PriorityList({ rows, now, loading, onCallAgain }: Props) {
                   Backup left
                   <RunwayScale />
                 </th>
-                <th className="c-drive" scope="col">Supplier drive</th>
+                <th className="c-drive" scope="col">Hospital drive</th>
                 <th className="c-act" scope="col">
                   <span className="sr-only">Actions</span>
                 </th>

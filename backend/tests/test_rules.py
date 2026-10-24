@@ -30,12 +30,12 @@ class WorkedExampleTest(unittest.TestCase):
         d = rule(facts(device_working="no", backup_left=0, hours_left=0), drive=25)
         self.assertEqual((d.level, d.rule_id), (Status.HELP_NOW, "R1"))
 
-    def test_ruth_far_supplier_is_help_now(self):
+    def test_ruth_far_hospital_is_help_now(self):
         d = rule(facts(backup_left=1, hours_left=2), drive=70)
         self.assertEqual((d.level, d.rule_id), (Status.HELP_NOW, "R2"))
-        self.assertEqual(d.reason, "Supplier 70 min away, 50 min to spare")
+        self.assertEqual(d.reason, "Hospital 70 min away, 50 min to spare")
 
-    def test_maria_same_words_near_supplier_is_help_soon(self):
+    def test_maria_same_words_near_hospital_is_help_soon(self):
         d = rule(facts(backup_left=1, hours_left=2, needs=["transport", "oxygen_delivery"]), drive=15)
         self.assertEqual((d.level, d.rule_id, d.reason), (Status.HELP_SOON, "R3", "1 backup left"))
         self.assertAlmostEqual(d.time_to_spare, 1.75)

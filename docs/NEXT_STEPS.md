@@ -11,15 +11,31 @@ Claude: read this at the start of every session. Work on the first unchecked tas
 
 ## Done
 
-- [x] Build plan (Claude doc "CareCall Build Plan")
-- [x] Dashboard mockup and a clickable `index.html` prototype
-- [x] FastAPI starter in `backend/app/`: residents (GET, POST, PATCH), `POST /outages` (marks people as calling), check-ins, `GET /queue`. Data is kept in memory for now
-- [x] `web/src/api.js`: dashboard → backend calls (now `web/src/api.ts`)
-- [x] `README.md`, `CLAUDE.md`, `docs/RANKING.md`, this file
-- [x] Agent Toolkit for AWS: AWS CLI, profile `carecall` (us-east-1), AWS skills, AWS rules at the end of `CLAUDE.md`
-- [x] Phase 1 dialer and DynamoDB storage. No-hook collector uses Connect attributes; script in `app/script.py`; guarded completion and a background checker. Offline tests cover emergency, complete, partial, missed and duplicate results plus DRY_RUN. Console and phone acceptance remain open.
+- [x] Build plan, dashboard prototype, FastAPI starter, `web/src/api.ts`
+- [x] `README.md`, `CLAUDE.md`, `docs/RANKING.md`, this file; Agent Toolkit for AWS (profile `carecall`, us-east-1)
+- [x] Phase 1 dialer + DynamoDB storage. No-hook collector reads Connect attributes; script in `app/script.py`; guarded completion + background checker.
+- [x] **Real phone call worked end to end** (keypad path): resident answered, answers captured as contact attributes, Bedrock ranked, result on the dashboard.
+- [x] **Bedrock ranking is live**, not a placeholder. `app/call_results.rank_call` calls `understand.extract_facts` (Nova Lite, forced `record_checkin` tool, temp 0) then `rules.rank_after_call`. `extract_facts` is wired, not `None`.
+- [x] **R0–R6 + NA rules** decide the level; the rule ID and `facts`/`ai` are saved on the resident and the check-in.
+- [x] **Eval harness** (`eval/run.py`, 24 English cases): offline + live Nova both 24/24, 0 missed urgent.
+- [x] **R4 dashboard drawer** shows Bedrock's facts (safe, device, backups, hours, needs, confidence %, model + latency) and "Ranked by rule … · …".
+- [x] **Amazon Location** hospital drive times (`app/location.py`, `data/Hospital_clean.csv`); `GET /hospitals`, `/locations/refresh`, per-resident route on the map.
+- [x] **Keypad check-in flow** (`connect/build_keypad_flow.py`), published; the live demo path.
+- [x] **Contact Lens speech flow** (`connect/build_speech_flow.py`) + `call_results.contact_lens_segments`; built and unit-tested.
+- [x] Hosting live: EC2 + CloudFront (basic auth) + S3 dashboard + DynamoDB; Bedrock S3 invocation logging + guardrail.
 
-**Why no Lambda:** the workshop account blocks IAM role creation. Himanshu hosts one uvicorn process on EC2 behind CloudFront and creates the DynamoDB tables. The old template is archived at `docs/reference/template.lambda.yaml` for production reference only; do not deploy it.
+## What's left (honest)
+
+- [ ] **Contact Lens speech verified on a live call.** Built + unit-tested, but a live call ranked on the keypad transcript, not the spoken words (Contact Lens segments did not reach Bedrock in the test window). Keypad is the demo path until this is proven. See `connect/SETUP.md`.
+- [ ] **Keypad DTMF timing.** Digits pressed before a prompt finishes can shift; add an inter-digit pause or a read-back before relying on it unattended.
+- [ ] **Lex natural-language bot.** Blocked: `CreateBot` needs `iam:PassRole` on the Lex SLR, which the workshop policy denies (proven on the API). Kept for production.
+- [ ] SNS "Help now" email; operator copilot (not built — out of scope for this account).
+- [ ] Video recording.
+
+**Why no Lambda / no Lex bot:** the workshop account blocks IAM role creation and
+`iam:PassRole` on service roles. One uvicorn process runs on EC2 behind CloudFront;
+answers come by keypad or Contact Lens, never a Lex NLU bot. The old SAM template is
+archived at `docs/reference/template.lambda.yaml`; do not deploy it.
 
 ---
 
@@ -80,7 +96,7 @@ Docs: [StartOutboundVoiceContact](https://docs.aws.amazon.com/connect/latest/API
   - **Resident:** add `device_group` (1–3, replacing `risk_tier`), `backups_on_file`, `backup_hours_each`, `drive_minutes`, `missed_calls`, `contact_id`, `call_started_at`.
   - **Result:** add `level`, `rule_id`, `reason`, `hours_left`, `time_to_spare`, `runs_out_at`, `recheck_at`, `facts`, `transcript`.
   - Replace the `Status` values with `HELP_NOW`, `HELP_SOON`, `PERSON_CHECK`, `NEEDS_SUPPLIES`, `OK_FOR_NOW`, `CALLING`, `NOT_CALLED`.
-- [ ] **8. `app/call_results.py:extract_facts(transcript)`: Bedrock.** Replace its current `None` placeholder by wiring the existing `app/understand.py` extraction helper. Its forced-tool request, normalization and error handling have offline tests; the collector integration is still pending. Converse API with the forced `record_checkin` tool, temperature 0, model from `BEDROCK_MODEL_ID`.
+- [x] **8. Bedrock extraction wired.** `call_results.rank_call` calls `understand.extract_facts` (Converse, forced `record_checkin` tool, temperature 0, model from `BEDROCK_MODEL_ID`) on every answered call and the typed-transcript endpoint. Live + offline eval both 24/24.
   - *Done when:* 5 typed transcripts, including a messy one, each return valid JSON in the exact shape.
 - [ ] **9. `app/ranking.py` and `eval/run.py`.** Round 1 and round 2 exactly as in `docs/RANKING.md`, with no AWS calls inside. The eval runs the 10 test cases. *(Round 1 is in app/ranking.py. Round 2 exists in app/rules.py with offline tests for the worked example and edge cases; call-result integration and eval/run.py are still pending.)*
   - *Done when:* 0 missed "Help now" cases.

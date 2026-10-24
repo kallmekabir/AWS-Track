@@ -36,7 +36,7 @@ flowchart TD
   connect -->|"persist intent and A1–A5"| attrs["Contact attributes"]
   api -->|"DescribeContact then GetContactAttributes"| attrs
   api --> results["call_results: transcript, status, save, dial_next"]
-  results -.->|"Phase 2: extract_facts"| bedrock["Bedrock facts then Python ranking"]
+  results -->|"extract facts (Nova Lite)"| bedrock["Bedrock facts, then Python rules"]
   web --> maps["Amazon Location map tiles"]
 ```
 
@@ -68,7 +68,7 @@ production reference only and must not be deployed in this account.
 | Collected result | Current status |
 | --- | --- |
 | Emergency intent or emergency phrase in any answer | HELP_NOW, R0, emergency=True |
-| Five answers | PERSON_CHECK: All 5 answers in. Waiting for ranking |
+| Five answers | Ranked live: Bedrock facts -> rules R0-R6/NA -> level + rule ID |
 | Some answers | PERSON_CHECK: Call ended after question N of 5 |
 | answered is not yes, or no answers | Increment missed_calls; retry after others' first calls; two misses → HELP_SOON / NA |
 

@@ -35,7 +35,7 @@ export const RULE_TEXT: Record<string, string> = {
   NA: 'No answer after 2 calls; send a welfare check',
 }
 
-/** "R2 · Supplier 70 min away, 50 min to spare" (CLAUDE.md section 3). */
+/** "R2 · Hospital 70 min away, 50 min to spare" (CLAUDE.md section 3). */
 export function reasonLine(r: Resident): string | null {
   const parts = [r.rule_id, r.reason].filter(Boolean)
   return parts.length ? parts.join(' · ') : null
