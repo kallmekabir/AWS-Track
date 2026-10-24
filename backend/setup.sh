@@ -10,7 +10,7 @@
 #
 # Options (environment variables):
 #   AWS_PROFILE=name      AWS CLI profile to use (default: carecall)
-#   CONNECT_FLOW_NAME=x   contact flow to use (default: "CareCall test call")
+#   CONNECT_FLOW_NAME=x   contact flow to use (default: "CareCall check-in keypad")
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -18,7 +18,7 @@ export PATH="$HOME/.local/bin:$PATH"   # where the AWS CLI installer puts `aws`
 
 PROFILE="${AWS_PROFILE:-carecall}"
 REGION="us-east-1"
-FLOW_NAME="${CONNECT_FLOW_NAME:-CareCall test call}"
+FLOW_NAME="${CONNECT_FLOW_NAME:-CareCall check-in keypad}"
 PERSONAS="daniel-kim ruth-okafor maria-lopez linh-tran"
 
 step() { printf '\n==> %s\n' "$1"; }
@@ -90,6 +90,8 @@ wanted = {
     "CONNECT_CONTACT_FLOW_ID": flow_id,
     "CONNECT_SOURCE_NUMBER": source_number,
     "PHONES_SSM_PATH": "/carecall/phones",
+    "BEDROCK_MODEL_ID": "us.amazon.nova-lite-v1:0",   # reads the keypad answers
+    "LOCATION_ENABLED": "1",                           # hospital drive routes on the map
 }
 path = Path(".env")
 lines = path.read_text().splitlines()
@@ -104,13 +106,31 @@ path.write_text("\n".join(lines) + "\n")
 print("Updated:", ", ".join(wanted))
 PY
 
-# ---- 6. Check the settings load ----
+# ---- 6. web/.env.local: the map key (a browser key, git-ignored) ----
+step "Writing web/.env.local (map key)"
+MAP_KEY="$(aws_q location describe-key --key-name careline-map-key --query Key 2>/dev/null || true)"
+if [ -z "$MAP_KEY" ] || [ "$MAP_KEY" = "None" ]; then
+  echo "No careline-map-key found; the dashboard will hide the map."
+else
+  [ -f ../web/.env.local ] || cp ../web/.env.example ../web/.env.local
+  .venv/bin/python - "$MAP_KEY" <<'PY2'
+import sys
+from pathlib import Path
+
+path = Path("../web/.env.local")
+lines = [l for l in path.read_text().splitlines() if not l.startswith("VITE_LOCATION_API_KEY=")]
+path.write_text("\n".join(lines + [f"VITE_LOCATION_API_KEY={sys.argv[1]}"]) + "\n")
+print("Map key saved (the map only loads at http://localhost:5173)")
+PY2
+fi
+
+# ---- 7. Check the settings load ----
 step "Checking the settings"
 .venv/bin/python -c "
 from dotenv import load_dotenv; load_dotenv('.env')
 from app import calling; calling.check_config(); print('Settings OK')"
 
-# ---- 7. Who has a phone number in Parameter Store (names only, never numbers) ----
+# ---- 8. Who has a phone number in Parameter Store (names only, never numbers) ----
 step "Phone numbers in Parameter Store (/carecall/phones)"
 SAVED="$(aws_q ssm get-parameters-by-path --path /carecall/phones --query 'Parameters[].Name' 2>/dev/null || true)"
 for persona in $PERSONAS; do
@@ -133,7 +153,10 @@ Setup complete. Next:
      source .venv/bin/activate
      uvicorn app.main:app --reload --env-file .env
 
-3. Call only your own phone (r-001 Daniel, r-002 Ruth, r-003 Maria, r-004 Linh):
+3. Start the dashboard in a second terminal:  cd web && npm install && npm run dev
+
+4. Call only your own phone (r-001 Daniel, r-002 Ruth, r-003 Maria, r-004 Linh):
      curl -X POST localhost:8000/residents/r-002/call
+   Answer with the keypad; README "Test a call" lists what to press.
    "Start outage" on the dashboard rings EVERY teammate with a number, so warn the team first.
 EOF

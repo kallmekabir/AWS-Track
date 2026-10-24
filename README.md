@@ -162,8 +162,12 @@ hosted on EC2 behind CloudFront.
 
 ```bash
 aws login --region us-east-1 --profile carecall   # lasts ~12 h; rerun on ExpiredToken
-cd backend && ./setup.sh                            # venv, deps, backend/.env from your sign-in
+cd backend && ./setup.sh                            # venv, deps, backend/.env + web/.env.local from your sign-in
 ```
+
+`setup.sh` picks the keypad call script (`CareCall check-in keypad`), turns on Bedrock
+(`BEDROCK_MODEL_ID`) and hospital routes (`LOCATION_ENABLED=1`), and saves the map key in
+`web/.env.local`. Rerun it after pulling if calls ring twice or the map is missing.
 
 Add your phone to Parameter Store (never paste numbers into chat or files): create a
 **SecureString** `/carecall/phones/<persona>` (e.g. `ruth-okafor`) with your number as
@@ -178,6 +182,37 @@ cd backend && source .venv/bin/activate && uvicorn app.main:app --reload --env-f
 # Terminal 2 — dashboard
 cd web && npm install && npm run dev        # http://localhost:5173
 ```
+
+The map only loads at `http://localhost:5173`. If Vite picks another port, close what is
+using 5173 and restart it.
+
+### Test a call (your phone only)
+
+1. Backend and dashboard running, dashboard open.
+2. Ring only your persona (`r-001` Daniel, `r-002` Ruth, `r-003` Maria, `r-004` Linh), or
+   press **Call again** on your row after the first call:
+   ```bash
+   curl -X POST localhost:8000/residents/r-001/call
+   ```
+3. Answer with the keypad. Wait for each question to finish before pressing.
+   Q1 safe? 1 yes, 2 no · Q2 device working? 1 yes, 2 no, 3 not sure · Q3 full backups 0-5 ·
+   Q4 hours until you run out 0-9 · Q5 need: 1 nothing, 2 ride, 3 oxygen, 4 charging,
+   5 food, 6 medicine.
+4. A few seconds after you hang up, your row shows a level and reason; **What they said**
+   shows the answers.
+
+| Test | Keys Q1-Q5 | Expected |
+| --- | --- | --- |
+| Not safe | 2, then anything | Help now: "Said they're not safe" |
+| Device off, no backups | 1, 2, 0, 0, 1 | Help now: "Device off, no backups left" |
+| Running low | 1, 1, 2, 2, 1 | Help soon |
+| Needs supplies | 1, 1, 3, 8, 5 | Needs supplies: "Needs food" |
+| All fine | 1, 1, 3, 8, 1 | OK for now: "Enough supply" |
+| No answer | don't pick up | After `NO_ANSWER_SECONDS` it rings once more, then Help soon: "No answer (2 tries)" |
+
+**Start outage** rings every teammate with a number in Parameter Store; warn the team
+first. To test without ringing anyone, set `CONNECT_DRY_RUN=1` in `backend/.env` and
+restart (fake answers arrive after 5 seconds).
 
 ### Seed residents
 
@@ -207,6 +242,7 @@ One uvicorn worker on EC2 reads `/etc/careline/backend.env` (keys from
 `backend/.env.example`). CloudFront serves `https://<cloudfront>/api/...`, strips `/api`,
 and forwards to port 8000. Build the dashboard with
 `VITE_API_URL=https://<cloudfront>/api`. Never commit `.env` or `web/.env.local`.
+The hosted site asks for a username and password (HTTP Basic Auth); ask Himanshu for them.
 
 ### If something goes wrong
 
@@ -216,6 +252,9 @@ and forwards to port 8000. Build the dashboard with
 | `ExpiredToken` | `aws login --region us-east-1 --profile carecall`, restart the backend |
 | `403 … not in Parameter Store` | That persona has no stored number, or the backend started before it was added |
 | `503 Calling is not set up` | A Connect value is missing in `backend/.env`; rerun `./setup.sh` |
+| Phone rings twice, no answers saved | Old test call script; rerun `./setup.sh` and restart the backend |
+| Map is missing | No `VITE_LOCATION_API_KEY` in `web/.env.local` (rerun `./setup.sh`), or the dashboard isn't on port 5173 |
+| Answers saved but "A person must check" | `BEDROCK_MODEL_ID` is empty; rerun `./setup.sh` |
 
 ## Repository layout
 
