@@ -138,6 +138,7 @@ not be in it.
 | `consent` | bool | Must be true |
 | `emergency_contact_phone` | string | |
 | `lat`, `lng` | float | Inside San Jose |
+| `sim_scenarios` | string | Pipe-separated eval scenario IDs, one per check (for example `S07\|S01`). Empty for real-phone residents. Used by the call simulator (task graph B04) |
 
 Seed design (D): 40 residents, 10 per zone, same tier and language mix as the plan.
 For the copilot video moment, Zone 2 must contain **two tier-1 residents whose battery

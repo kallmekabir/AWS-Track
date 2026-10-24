@@ -2,9 +2,14 @@
 
 - Python 3.12, AWS Lambda, boto3, AWS CDK (Python)
 - Region: us-east-1 only
-- DynamoDB tables: `Residents`, `Calls`, `Tasks`, `Audit` (on-demand billing)
-- Step Functions Standard workflows: `CallWave` (Map, MaxConcurrency 3) and `ResidentCheck`
-  (task token on the call, waits for retries and battery-runway rechecks)
+- DynamoDB tables: `Residents`, `Outages`, `Calls`, `Tasks`, `Audit` (on-demand billing).
+  Exact keys, item shapes, events and API payloads: `.plans/careline-task-graph.md`, Contracts
+- Step Functions Standard workflows: `CallWave` (starts each `ResidentCheck` asynchronously,
+  spaced `DIAL_SPACING_SECONDS` apart) and `ResidentCheck` (task token on the call, waits for
+  retries and battery-runway rechecks; execution name `<outage_id>--<resident_id>`)
+- Residents not on the dialer allow-list are answered by the `simulator` Lambda, which runs
+  eval scenario turns through the same redaction, extraction and triage code
+  (`simulated: true`)
 - EventBridge events: `careline.outage.started`, `careline.outage.ended`,
   `careline.checkin.completed`
 - Amazon Connect + Lex V2 (`CareLineCheckIn`, locales en_US, es_US, hi_IN)

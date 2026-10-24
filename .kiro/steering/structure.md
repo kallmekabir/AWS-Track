@@ -3,9 +3,12 @@
 ```
 infra/                 CDK stacks: CareLineData, CareLineCore, CareLineApi, CareLineWeb
 lambdas/<name>/        one folder per Lambda, entry point handler.py
-  dialer/              StartOutboundVoiceContact, allow-list check
+  dialer/              StartOutboundVoiceContact, allow-list check; wave.py plans CallWave
   lex_hook/            Lex code hook: redaction, Bedrock extraction, slot filling
-  triage/              rules R0–R7 (rules.py) and task creation
+  call_status/         contact-flow end and disconnect: SendTaskSuccess with call status
+  simulator/           answers for residents not on the allow-list (eval scenarios)
+  triage/              rules R0–R7 (rules.py), runway.py, tasks.py
+  outage_end/          stops ResidentCheck executions when an outage ends
   copilot/             Bedrock tool-use loop and read-only tools
   api/                 REST handlers for the dashboard (incl. /outages/{id}/priority)
   geo/                 Amazon Location Routes: hospital access at outage start, route on click

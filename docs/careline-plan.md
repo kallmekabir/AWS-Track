@@ -148,7 +148,7 @@ Do all setup in the first hour, because a new Amazon Connect instance can block 
 
 **Infrastructure as code.** Use AWS CDK in Python (or SAM if the team prefers). Kiro can generate the stacks from the design spec. Stack names: `CareLineData`, `CareLineCore`, `CareLineApi`, `CareLineWeb`. Configure Connect, the contact flow and the Lex bot in the console first, export the flow JSON into the repo, and only automate them if time allows.
 
-**Environment variables (Lambda):** `TABLE_RESIDENTS`, `TABLE_CALLS`, `TABLE_TASKS`, `TABLE_AUDIT`, `CONNECT_INSTANCE_ID`, `CONNECT_FLOW_ID`, `CONNECT_SOURCE_NUMBER`, `BEDROCK_MODEL_ID`, `STATE_MACHINE_ARN`, `HOSPITAL_CANDIDATES` (3), `ROUTE_CACHE_MIN` (15), `DRIVE_TIE_WINDOW_MIN` (30).
+**Environment variables (Lambda):** `TABLE_RESIDENTS`, `TABLE_CALLS`, `TABLE_TASKS`, `TABLE_AUDIT`, `CONNECT_INSTANCE_ID`, `CONNECT_FLOW_ID`, `CONNECT_SOURCE_NUMBER`, `BEDROCK_EXTRACT_MODEL_ID`, `BEDROCK_COPILOT_MODEL_ID`, `TABLE_OUTAGES`, `STATE_MACHINE_RESIDENT_CHECK_ARN`, `STATE_MACHINE_CALL_WAVE_ARN`, `DIAL_SPACING_SECONDS`, `SIMULATE_UNLISTED`, `HOSPITAL_CANDIDATES` (3), `ROUTE_CACHE_MIN` (15), `DRIVE_TIE_WINDOW_MIN` (30).
 
 **Environment variables (web, in `web/.env.local`):** `VITE_AWS_REGION`, `VITE_LOCATION_API_KEY` (read with `aws location describe-key --key-name careline-map-key` after deploying; never commit it), `VITE_MAP_STYLE` (Monochrome).
 
@@ -201,19 +201,19 @@ The map work has no spec of its own: its requirements go into `operator-dashboar
 
 **4. MCP servers.** Add the AWS Documentation MCP server so Kiro can look up Connect, Lex and Step Functions APIs instead of guessing. Kiro's MCP docs warn that MCP servers run locally outside its sandbox and can read configured environment variables, so add only official AWS servers and never put long-lived credentials in `mcp.json` ([Kiro MCP security](https://kiro.dev/fr/docs/mcp/security/)).
 
-**5. Execution.** Run each spec's `tasks.md` one task at a time and commit after each. Keep humans on the parts Kiro does poorly without a console: the Connect contact flow, the Lex bot intents and phone-number setup.
+**5. Execution.** Every task, with its dependencies, owned files, contracts and done-checks, is in [`.plans/careline-task-graph.md`](../.plans/careline-task-graph.md); paste a task section into Kiro (or Codex or Claude) as the prompt. Run each spec's `tasks.md` one task at a time and commit after each. Keep humans on the parts Kiro does poorly without a console: the Connect contact flow, the Lex bot intents and phone-number setup.
 
 **For the video:** a few seconds showing the spec folders, a sample EARS requirement and the eval hook firing, inside the "Above and beyond" segment.
 
 ## Data model
 
-Four on-demand DynamoDB tables keep the model simple; transcripts expire automatically and never enter the audit log. All residents are synthetic.
+Five on-demand DynamoDB tables keep the model simple; transcripts expire automatically and never enter the audit log. All residents are synthetic. The `Outages` table (PK `outage_id`, SK `sk`) holds one `META` item per outage and one `BRIEF#<brief_id>` item per copilot brief. Full key and item shapes are in the task graph's Contracts section (C4).
 
 | Table | Partition key | Sort key | Key attributes | TTL |
 | --- | --- | --- | --- | --- |
 | `Residents` | `resident_id` | — | `first_name`, `last_name`, `phone_e164`, `language` (en/es/hi), `zone_id`, `zone_name`, `risk_tier` (1 = ventilator/oxygen, 2 = dialysis/refrigerated medicine, 3 = mobility device), `device_type`, `consent` (true), `emergency_contact_phone`, `lat`, `lng`, `hospital_access` (nearest hospital, drive time, basis and cached route, written at outage start) | none |
 | `Calls` | `outage_id` | `resident_id#attempt` | `contact_id`, `status` (QUEUED/RINGING/ANSWERED/NO\_ANSWER/FAILED), `extracted` (JSON), `triage`, `rule_id`, `battery_hours`, `next_check_at`, `transcript_redacted`, `expires_at` | `expires_at` = now + 24 h |
-| `Tasks` | `task_id` | — | `type` (OPERATOR\_ALERT/WELFARE\_CHECK/TRANSPORT/MEDICINE/FOOD/INFO\_SMS), `resident_id`, `outage_id`, `priority`, `status` (OPEN/ACK/DONE), `assigned_to` | none |
+| `Tasks` | `task_id` | — | `type` (OPERATOR\_ALERT/HUMAN\_REVIEW/WELFARE\_CHECK/TRANSPORT/CHARGING/MEDICINE/FOOD/INFO\_SMS), `resident_id`, `outage_id`, `priority`, `status` (OPEN/ACK/DONE), `assigned_to` | none |
 | `Audit` | `outage_id` | `ts#event_id` | `actor` (system/operator id), `action`, `resident_id`, `rule_id`, `inputs_hash`, `before`, `after`, `reason` | none |
 
 **Indexes.** `Residents` gets a GSI on `zone_id` + `risk_tier` so a call wave queries one zone in risk order. `Tasks` gets a GSI on `status` + `priority` for the operator queue.
@@ -337,7 +337,9 @@ Triage is a short, ordered list of deterministic rules. The first rule that matc
 
 **Step Functions design.**
 
-- **`CallWave` (one per outage).** Query `Residents` by `zone_id` in risk order → a Map state with `MaxConcurrency = 3` starts one `ResidentCheck` per resident. Concurrency stays low so the Connect instance's concurrent-call limit is never hit.
+- **`CallWave` (one per outage).** Query `Residents` by `zone_id` in risk order → a Map state starts one `ResidentCheck` per resident **asynchronously**, waiting `DIAL_SPACING_SECONDS` (20 s) between starts so the Connect instance's concurrent-call limit is never hit. (A `MaxConcurrency = 3` Map over synchronous child workflows would stall: each `ResidentCheck` loops on rechecks until the outage ends, so only 3 residents would ever be called.)
+- **Simulated residents.** Residents not on the dialer allow-list are answered by the `simulator` Lambda, which runs their assigned eval scenario turns through the same redaction, Bedrock extraction and triage code after a short random delay. Their calls are marked `simulated: true` and shown with a "sim" chip, so the wave fills on video while the demo stays honest.
+- **Returning the task token.** The contact flow's last step, and its disconnect flow, invoke the `call_status` Lambda, which calls `SendTaskSuccess` with the call status.
 - **`ResidentCheck` (one per resident, Standard workflow).** `PlaceCall` uses `.waitForTaskToken`: the dialer saves the token in `Calls`, and the contact flow's final Lambda calls `SendTaskSuccess` with the call status. A 180-second task timeout means NO\_ANSWER, because an unanswered outbound call never enters the flow. Then `Triage` (Lambda) → a Choice state routes to alert, tasks, recheck wait or retry wait, as drawn below.
 - **Outage ended.** An `careline.outage.ended` event runs a Lambda that stops every open `ResidentCheck` for that outage, so nobody gets called after power is back.
 
