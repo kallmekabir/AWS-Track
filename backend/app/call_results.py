@@ -11,7 +11,7 @@ import os
 
 import boto3
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 from app import calling, rules, script, store, understand
 from app.models import Resident, Status
@@ -25,7 +25,7 @@ def _contact_lens():
     """One connectcontactlens client, reused. Separate from the dialer's connect client."""
     global _cl_client
     if _cl_client is None:
-        _cl_client = boto3.client("connectcontactlens", config=Config(
+        _cl_client = boto3.client("connect-contact-lens", config=Config(
             retries={"total_max_attempts": 2, "mode": "standard"}))
     return _cl_client
 
@@ -52,7 +52,7 @@ def contact_lens_segments(contact_id: str) -> list[str]:
             token = resp.get("NextToken")
             if not token:
                 break
-    except ClientError:
+    except (ClientError, BotoCoreError):
         return []
     return [c for _, c in sorted(turns, key=lambda x: x[0])]
 
