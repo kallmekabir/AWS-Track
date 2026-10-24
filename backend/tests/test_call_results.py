@@ -114,10 +114,10 @@ class CallResultsTest(unittest.TestCase):
         entered, release = threading.Event(), threading.Event()
         fetch = call_results.fetch
 
-        def slow_fetch(contact_id):
+        def slow_fetch(contact_id, resident_id=None):
             entered.set()
             self.assertTrue(release.wait(5))
-            return fetch(contact_id)
+            return fetch(contact_id, resident_id)
 
         with mock.patch.object(call_results, "fetch", side_effect=slow_fetch):
             with ThreadPoolExecutor(max_workers=2) as pool:
@@ -276,3 +276,16 @@ class SpeechCheckInTest(unittest.TestCase):
         done = store.get_resident("r-001")
         self.assertIn(done.rule_id, ("R1", "R2", "R3"))
         self.assertEqual(done.transcript[0].answer, "I'm okay")
+
+
+class DryRunVarietyTest(unittest.TestCase):
+    def test_residents_get_varied_answers_not_all_identical(self):
+        from unittest import mock as _m
+        from app import call_results as cr
+        with _m.patch.object(calling, "DRY_RUN", True):
+            sets = {rid: cr.fetch(f"dry-run-{rid}", rid)
+                    for rid in ("r-001","r-002","r-003","r-004","r-005","r-006","r-007","r-008")}
+        # Not everyone has the same a4 (hours) / a5 (needs)
+        a4s = {v["a4"] for v in sets.values()}
+        self.assertGreater(len(a4s), 3, "DRY_RUN answers should vary across residents")
+        self.assertEqual(sets["r-005"]["a1"], "I can't breathe well")  # emergency persona
