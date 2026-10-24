@@ -2,6 +2,8 @@ AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: CareCall backend - dashboard API and Lex code hook for 4-at-a-time check-in calls
 
+# Production path. Not deployed in the workshop account (no IAM role creation); the same
+# app runs on EC2, see docs/infra/HANDOFF.md.
 # Deploy from backend/:  sam build && sam deploy --guided --profile carecall
 # Step-by-step order (Connect instance first, Lex bot after this stack): connect/SETUP.md
 

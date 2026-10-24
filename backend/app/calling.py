@@ -219,26 +219,44 @@ def _call_ended(resident: Resident) -> bool:
 
 
 def _close_unfinished_call(resident: Resident) -> bool:
-    """The call ended before question 5. Record a missed call or a cut-off call."""
-    answered = len(resident.transcript)
-    if answered:
-        changes = {"status": Status.PERSON_CHECK, "rule_id": None,
-                   "reason": f"Call ended after question {answered} of 5"}
-    else:
-        missed = resident.missed_calls + 1
-        if missed >= MAX_MISSED_CALLS:
-            changes = {"status": Status.HELP_SOON, "rule_id": "NA",
-                       "reason": f"No answer ({missed} tries). Send a welfare check"}
+    """A call ended. Read its answers from Connect and rank, or record a missed call.
+
+    - read_answers None (attributes not ready): leave the resident CALLING and try again
+      next poll, unless the call started over NO_ANSWER_SECONDS * 2 ago, then treat it as
+      a missed call so nobody is stuck CALLING forever.
+    - any answer present, or emergency: rank with checkin.finish_checkin.
+    - no answers at all: missed-call logic; the 2nd miss uses rules.no_answer_decision.
+    """
+    from app import call_results, checkin  # local import avoids a circular import
+    from app.rules import no_answer_decision
+
+    answers, emergency = [], False
+    if not DRY_RUN and resident.contact_id:
+        read = call_results.read_answers(resident.contact_id)
+        if read is None:
+            last = resident.last_activity_at or resident.call_started_at
+            stuck = last and _now() - last > timedelta(seconds=NO_ANSWER_SECONDS * 2)
+            if not stuck:
+                return False  # try again on the next poll
         else:
-            changes = {"status": Status.NOT_CALLED, "rule_id": None,
-                       "reason": f"No answer ({missed} try). Calling again"}
-        changes["missed_calls"] = missed
+            answers, emergency = read
+
+    has_answer = emergency or any(a.strip() for a in answers)
+    if has_answer:
+        done = checkin.finish_checkin(resident.id, answers, emergency=emergency, source="call")
+        return done is not None
+
+    # No answers: missed call.
+    missed = resident.missed_calls + 1
+    if missed >= MAX_MISSED_CALLS:
+        na = no_answer_decision(missed)
+        changes = {"status": na.level, "rule_id": na.rule_id, "reason": na.reason}
+    else:
+        changes = {"status": Status.NOT_CALLED, "rule_id": None,
+                   "reason": f"No answer ({missed} try). Calling again"}
+    changes["missed_calls"] = missed
     changes["current_question"] = 0
     done = store.transition(resident.id, Status.CALLING, changes, contact_id=resident.contact_id)
-    if done and answered:
-        store.add_checkin(resident.id, {
-            "source": "call", "status": done.status.value, "reason": done.reason,
-            "transcript": [a.model_dump() for a in done.transcript]})
     return done is not None
 
 

@@ -4,6 +4,7 @@ from datetime import timedelta
 from app import calling, store
 from app.models import Status
 from tests.fakes import TEAM_PHONES, FakeConnect, use_fake_connect
+from tests.test_understand import GOOD, FakeBedrock, use_fake_bedrock
 
 
 class StartOutageTest(unittest.TestCase):
@@ -71,7 +72,7 @@ class EndedCallsTest(unittest.TestCase):
     def test_no_answer_retries_after_others_then_na(self):
         fake = use_fake_connect(self, max_lines=1)
         calling.start_outage("A")                       # Daniel rings
-        fake.hung_up.add(store.get_resident("r-001").contact_id)
+        fake.hung_up.add(store.get_resident("r-001").contact_id)  # no attributes set
         calling.check_calls(force=True)                 # missed once -> Ruth rings next
 
         daniel = store.get_resident("r-001")
@@ -87,25 +88,82 @@ class EndedCallsTest(unittest.TestCase):
         self.assertEqual((daniel.status, daniel.rule_id), (Status.HELP_SOON, "NA"))
         self.assertIn("No answer (2 tries)", daniel.reason)
 
-    def test_hang_up_partway_needs_a_person(self):
+    def test_hang_up_with_answers_is_ranked(self):
         fake = use_fake_connect(self, max_lines=1)
+        use_fake_bedrock(self, FakeBedrock(GOOD))       # safe/device yes, 1 tank, 2 h
         calling.start_outage("A")
-        store.transition("r-001", Status.CALLING, {"transcript": [
-            {"q": 1, "question": "Are you safe?", "answer": "yes"}]})
-        fake.hung_up.add(store.get_resident("r-001").contact_id)
+        contact = store.get_resident("r-001").contact_id
+        fake.set_answers(contact, ["yes", "yes on the tank", "one tank", "about two hours", "no"])
+        fake.hung_up.add(contact)
         calling.check_calls(force=True)
 
         daniel = store.get_resident("r-001")
-        self.assertEqual(daniel.status, Status.PERSON_CHECK)
-        self.assertEqual(daniel.reason, "Call ended after question 1 of 5")
+        self.assertIn(daniel.rule_id, ("R1", "R2", "R3"))   # ranked, not PERSON_CHECK by cutoff
+        self.assertIsNotNone(daniel.facts)
+        self.assertTrue(daniel.ai["ok"])
         self.assertEqual(len(store.list_checkins("r-001")), 1)
+        self.assertEqual(fake.called_ids(), ["r-001", "r-002"])  # line freed -> Ruth
+
+    def test_emergency_attribute_forces_r0_even_if_bedrock_says_no(self):
+        fake = use_fake_connect(self, max_lines=1)
+        use_fake_bedrock(self, FakeBedrock(GOOD))       # Bedrock says emergency False
+        calling.start_outage("A")
+        contact = store.get_resident("r-001").contact_id
+        fake.set_answers(contact, ["yes", "yes", "one", "two hours", "no"], emergency=True)
+        fake.hung_up.add(contact)
+        calling.check_calls(force=True)
+        daniel = store.get_resident("r-001")
+        self.assertEqual((daniel.status, daniel.rule_id), (Status.HELP_NOW, "R0"))
+        self.assertTrue(daniel.emergency)
+
+    def test_emergency_phrase_in_a1_forces_r0(self):
+        fake = use_fake_connect(self, max_lines=1)
+        use_fake_bedrock(self, FakeBedrock(GOOD))
+        calling.start_outage("A")
+        contact = store.get_resident("r-001").contact_id
+        fake.set_answers(contact, ["I can't breathe", "", "", "", ""])
+        fake.hung_up.add(contact)
+        calling.check_calls(force=True)
+        daniel = store.get_resident("r-001")
+        self.assertEqual((daniel.status, daniel.rule_id), (Status.HELP_NOW, "R0"))
+
+    def test_empty_attributes_is_a_missed_call(self):
+        fake = use_fake_connect(self, max_lines=1)
+        calling.start_outage("A")
+        contact = store.get_resident("r-001").contact_id
+        fake.set_answers(contact, ["", "", "", "", ""])   # all blank
+        fake.hung_up.add(contact)
+        calling.check_calls(force=True)
+        self.assertEqual(store.get_resident("r-001").missed_calls, 1)
+
+    def test_attributes_not_ready_leaves_resident_calling(self):
+        fake = use_fake_connect(self, fake=FakeConnect(attrs_error=True), max_lines=1)
+        calling.start_outage("A")
+        fake.hung_up.add(store.get_resident("r-001").contact_id)
+        calling.check_calls(force=True)                   # GetContactAttributes errors
+        self.assertEqual(store.get_resident("r-001").status, Status.CALLING)  # read again next poll
+
+    def test_bedrock_failure_ranks_r4(self):
+        from botocore.exceptions import ClientError
+        fake = use_fake_connect(self, max_lines=1)
+        throttled = ClientError({"Error": {"Code": "ThrottlingException", "Message": "slow"}},
+                                "Converse")
+        use_fake_bedrock(self, FakeBedrock(error=throttled))
+        calling.start_outage("A")
+        contact = store.get_resident("r-001").contact_id
+        fake.set_answers(contact, ["yes", "yes", "one", "two hours", "no"])
+        fake.hung_up.add(contact)
+        calling.check_calls(force=True)
+        daniel = store.get_resident("r-001")
+        self.assertEqual((daniel.status, daniel.rule_id), (Status.PERSON_CHECK, "R4"))
+        self.assertFalse(daniel.ai["ok"])
 
     def test_timer_catches_silent_calls(self):
         use_fake_connect(self, max_lines=1)
         calling.start_outage("A")
         daniel = store.get_resident("r-001")
         store.transition("r-001", Status.CALLING, {
-            "call_started_at": daniel.call_started_at - timedelta(seconds=calling.NO_ANSWER_SECONDS + 1)})
+            "call_started_at": daniel.call_started_at - timedelta(seconds=calling.NO_ANSWER_SECONDS * 2 + 1)})
         calling.check_calls(force=True)
         self.assertEqual(store.get_resident("r-001").missed_calls, 1)
 
