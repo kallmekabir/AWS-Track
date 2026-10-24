@@ -1,6 +1,6 @@
 # CareCall ranking rules
 
-This file is the single source of truth for how CareCall orders people. `app/ranking.py` and `eval/run.py` must match it. If a rule changes, change this file in the same step.
+This file is the single source of truth for how CareCall orders people. `app/ranking.py`, `app/rules.py` and the planned `eval/run.py` must match it. If a rule changes, change this file in the same step.
 
 CareCall ranks twice:
 
@@ -31,7 +31,7 @@ Sort by:
 2. `backups_on_file` (backup tanks or batteries the agency has on record), fewest first. Unknown counts as 0.
 3. `id`, so the order is always the same.
 
-Call the first `MAX_LINES` (4) people. Each time a call ends, call the next person who hasn't been reached. Someone who missed a call goes back in line **after** everyone who hasn't had a first call yet. Only people with `allow_call: true` whose number is on `DIALER_ALLOW_LIST` are ever called.
+Call the first `MAX_LINES` (4) people. Each time a call ends, call the next person who hasn't been reached. Someone who missed a call goes back in line **after** everyone who hasn't had a first call yet. Only people with `allow_call: true` whose number is in the teammate Parameter Store lookup or on `DIALER_ALLOW_LIST` are ever called.
 
 ---
 
@@ -47,9 +47,11 @@ Fixed wording. The voice only asks; it never gives medical advice.
 
 Closing: "Thank you. Our team has your answers. If anything changes or you feel unsafe, hang up and call 911."
 
-**Emergency words at any point:** "can't breathe" (also "cannot breathe", "can not breathe", "not breathing"), "chest pain", "heart attack", "emergency", "ambulance", "call 911", "nine one one", "help me", "I fell", "I've fallen". Say "Please hang up and call 911 now. I'm alerting our medical team." Then end the call and save the result with `emergency: true` (rule R0, Help now).
+**Emergency phrases:** "can't breathe" (also "cannot breathe", "can not breathe", "not breathing"), "chest pain", "heart attack", "emergency", "ambulance", "call 911", "nine one one", "help me", "I fell", "I've fallen". The Emergency entry intent says "Please hang up and call 911 now. I'm alerting our medical team." and ends the call. After disconnect, the backend saves `emergency: true` (rule R0, Help now) if the intent is Emergency or any saved answer contains one of these phrases.
 
-These are phrases, not single words. A bare "help" is left out on purpose: question 5 invites answers like "help with groceries", which must not end the call. The list lives in `backend/lambdas/lex_hook.py` (`EMERGENCY_PHRASES`). Change both together.
+**No-hook Lex timing:** CheckIn collects five FreeFormInput slots. The first reply selects the intent; the selected workshop design repeats the safety question to fill A1, then asks questions 2–5. FreeFormInput does not switch intents while eliciting a slot, so a phrase in A2–A5 is escalated after disconnect, rather than interrupting the call. Earlier answers may be lost if the caller hangs up before the flow copies slots into contact attributes. See `connect/SETUP.md` for pending console/phone acceptance.
+
+These are phrases, not single words. A bare "help" is left out on purpose: question 5 invites answers like "help with groceries", which must not end the call. The list lives in `backend/app/script.py` (`EMERGENCY_PHRASES`). Change both together.
 
 ---
 
@@ -93,6 +95,8 @@ Rules for the prompt: never guess. If the person didn't say it, use `null` or `"
 ---
 
 ## Round 2: rules after the call
+
+These Phase 2 rules exist in `app/rules.py` with offline tests, but their call-result integration remains pending. Today `call_results.extract_facts` returns None: the collector detects emergency intent/phrases directly, leaves complete or partial transcripts as PERSON_CHECK, and applies missed-call rule NA. The rules below are unchanged by the hosting architecture.
 
 Check the rules from top to bottom. **The first one that matches decides the level.** Save its rule ID with the result.
 

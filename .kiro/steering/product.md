@@ -1,27 +1,32 @@
-# Product: CareLine
+# Product: CareCall
 
-CareLine helps Jane Doe, a county public-health duty officer, check on every resident
-who depends on powered medical equipment during a power outage, before their backup
-batteries run out.
+CareCall helps Jane, a county public-health duty officer, check on residents who
+depend on powered medical equipment during a power outage, before their backup
+supplies run out. The workshop scope is four simultaneous calls, five fixed
+questions in English, and one priority list/map/drawer dashboard.
 
-Non-negotiable rules for all code in this repo:
-
-- Amazon Bedrock extracts fields, writes operator briefs and answers resident questions.
-  It never assigns triage. Triage is decided by the deterministic rules R0–R7 in
-  `lambdas/triage/rules.py`.
-- Anything unclear or low-confidence goes to a human (rule R4), never to SAFE.
-- Residents hear only fixed, reviewed scripts, except grounded Knowledge Base answers
-  that pass Bedrock Guardrails.
-- Never generate medical advice.
-- The operator copilot is read-only. Plans become tasks only after the operator approves.
-- Every decision writes an audit record with a `rule_id`. Overrides require a reason.
-- No diagnoses, medication names or raw transcripts are stored. Redacted transcripts
-  expire after 24 hours.
-- All resident data is synthetic. The dialer only calls numbers on the demo allow-list.
-- Priority order is computed by `priority_key()` in `lambdas/shared/careline_shared/priority.py`,
-  never by the model. The copilot keeps the order its tools return. Drive time only breaks
-  ties and never changes triage.
-- Drive times and hospital names are logistics information for the operator. Residents
-  never hear a hospital name, and the copilot never recommends where to receive care.
-- Resident coordinates are never sent to Bedrock. The real residents CSV stays in the
-  gitignored `data/private/`.
+- Use `docs/RANKING.md` for calling order, planned round 2 rules and reasons.
+  `backend/app/ranking.py` and `app/rules.py` stay pure Python. Bedrock extracts facts; it never ranks.
+- Emergency intent or a phrase in a saved answer produces HELP_NOW/R0. Until
+  Phase 2 ranking is implemented, complete or partial answers stay PERSON_CHECK.
+  No answer retries after others' first calls; two misses produce HELP_SOON/NA.
+- Residents hear only the fixed script from `backend/app/script.py` and the
+  repeated safety question needed to elicit A1. Never generate medical advice.
+- Be explicit about timing: answers reach the backend after disconnect. Lex
+  FreeFormInput cannot switch to Emergency during slot elicitation; saved phrases
+  escalate later. A hang-up before attribute copying may lose earlier answers.
+- Phase 2 replaces `call_results.extract_facts`, currently None, with Bedrock fact
+  extraction and Python ranking. Supplier time to spare affects R2 and ordering
+  exactly as RANKING.md specifies. Hospital travel is not a substitute.
+- Only consenting teammates' allow-listed numbers may receive real calls. Persona
+  data is synthetic. DRY_RUN is labeled as rehearsal, not proof of real calls.
+- Transcripts are short demo data. Do not promise redaction, automatic 24-hour
+  deletion, audit tables, callbacks or alert delivery before they are implemented.
+  Keep sensitive details outside model inputs and do not add recording.
+- Coordinates stay outside Bedrock requests. The map is operator logistics,
+  not a medical destination recommendation.
+- Copilot, multilingual calls, Knowledge Bases and workflow automation are
+  historical broader-design ideas, not requirements for this milestone.
+- EC2/CloudFront hosts the backend because the workshop blocks IAM role creation.
+  Never reinstate code hooks, Lambda deployment or five-table contracts from the
+  historical references. `docs/NEXT_STEPS.md` tracks current work and acceptance.
