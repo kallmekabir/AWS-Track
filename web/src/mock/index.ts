@@ -99,8 +99,12 @@ function residentAt(p: MockPerson, t: number): Resident {
     reason: null,
     hours_left: null,
     runs_out_at: null,
+    time_to_spare: null,
+    recheck_at: null,
     drive_minutes: p.drive_minutes,
     emergency: false,
+    facts: null,
+    ai: null,
     transcript: [],
     contact_id: null,
     call_started_at: null,
@@ -144,6 +148,8 @@ function residentAt(p: MockPerson, t: number): Resident {
   if (last.answered && p.result) {
     const { status, rule_id, hours_left } = p.result
     const reason = status === 'OK_FOR_NOW' ? `${p.result.reason} ${recheckAt(last.end, hours_left ?? 0)}` : p.result.reason
+    const spare =
+      hours_left === null ? null : hours_left - (p.drive_minutes ?? 0) / 60
     return {
       ...base,
       ...call,
@@ -152,6 +158,10 @@ function residentAt(p: MockPerson, t: number): Resident {
       reason,
       hours_left,
       runs_out_at: hours_left === null ? null : iso(last.end + hours_left * 3600),
+      time_to_spare: spare,
+      facts: p.result.facts ?? null,
+      ai: p.result.ai ?? null,
+      emergency: p.result.facts?.emergency ?? false,
       transcript: answersUpTo(5),
       last_activity_at: iso(last.end),
     }

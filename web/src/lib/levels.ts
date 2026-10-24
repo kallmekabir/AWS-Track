@@ -52,6 +52,20 @@ export function canCallAgain(r: Resident): boolean {
   return r.allow_call && r.status !== 'CALLING' && r.status !== 'NOT_CALLED'
 }
 
+/** Plain words for the needs Bedrock heard (docs/RANKING.md NEED_WORDS). */
+export const NEED_TEXT: Record<string, string> = {
+  medicine: 'medicine',
+  food: 'food',
+  transport: 'a ride',
+  charging: 'a place to charge',
+  oxygen_delivery: 'an oxygen delivery',
+}
+
+/** "yes" / "no" / "not sure" for the three-way fact fields. */
+export function yesNoText(v: 'yes' | 'no' | 'unsure'): string {
+  return v === 'unsure' ? 'not sure' : v
+}
+
 export const DEVICE_GROUP_TEXT: Record<number, string> = {
   1: 'Group 1: oxygen or ventilator',
   2: 'Group 2: dialysis or infusion',
