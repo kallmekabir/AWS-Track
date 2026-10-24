@@ -1,0 +1,281 @@
+{
+  "model_id": "us.amazon.nova-lite-v1:0",
+  "run_at": "2026-10-24T08:31:03.705222+00:00",
+  "offline": false,
+  "cases": [
+    {
+      "id": "rk01",
+      "expected": "R0",
+      "got": "R0",
+      "level": "HELP_NOW",
+      "reason": "Said it's an emergency",
+      "latency_ms": 943,
+      "ok": true,
+      "problems": [],
+      "mode": "live"
+    },
+    {
+      "id": "rk02",
+      "expected": "R0",
+      "got": "R0",
+      "level": "HELP_NOW",
+      "reason": "Said they're not safe",
+      "latency_ms": 743,
+      "ok": true,
+      "problems": [],
+      "mode": "live"
+    },
+    {
+      "id": "rk03",
+      "expected": "R1",
+      "got": "R1",
+      "level": "HELP_NOW",
+      "reason": "Device off, no backups left",
+      "latency_ms": 765,
+      "ok": true,
+      "problems": [],
+      "mode": "live"
+    },
+    {
+      "id": "rk04",
+      "expected": "R2",
+      "got": "R2",
+      "level": "HELP_NOW",
+      "reason": "Supplier 70 min away, 50 min to spare",
+      "latency_ms": 648,
+      "ok": true,
+      "problems": [],
+      "mode": "live"
+    },
+    {
+      "id": "rk05",
+      "expected": "R3",
+      "got": "R3",
+      "level": "HELP_SOON",
+      "reason": "1 backup left",
+      "latency_ms": 686,
+      "ok": true,
+      "problems": [],
+      "mode": "live"
+    },
+    {
+      "id": "rk06",
+      "expected": "R3",
+      "got": "R3",
+      "level": "HELP_SOON",
+      "reason": "3 h left",
+      "latency_ms": 672,
+      "ok": true,
+      "problems": [],
+      "mode": "live"
+    },
+    {
+      "id": "rk07",
+      "expected": "R4",
+      "got": "R4",
+      "level": "PERSON_CHECK",
+      "reason": "Answers unclear",
+      "latency_ms": 717,
+      "ok": true,
+      "problems": [],
+      "mode": "live"
+    },
+    {
+      "id": "rk08",
+      "expected": "R5",
+      "got": "R5",
+      "level": "NEEDS_SUPPLIES",
+      "reason": "Needs food",
+      "latency_ms": 649,
+      "ok": true,
+      "problems": [],
+      "mode": "live"
+    },
+    {
+      "id": "rk09",
+      "expected": "R6",
+      "got": "R6",
+      "level": "OK_FOR_NOW",
+      "reason": "Enough supply. Calling again at 4:30 AM",
+      "latency_ms": 718,
+      "ok": true,
+      "problems": [],
+      "mode": "live"
+    },
+    {
+      "id": "rk10",
+      "expected": "NA",
+      "got": "NA",
+      "level": "HELP_SOON",
+      "reason": "No answer (2 tries). Send a welfare check",
+      "latency_ms": 0,
+      "ok": true,
+      "problems": [],
+      "mode": "no_answer"
+    },
+    {
+      "id": "daniel",
+      "expected": "R1",
+      "got": "R1",
+      "level": "HELP_NOW",
+      "reason": "Device off, no backups left",
+      "latency_ms": 640,
+      "ok": true,
+      "problems": [],
+      "mode": "live"
+    },
+    {
+      "id": "ruth",
+      "expected": "R2",
+      "got": "R2",
+      "level": "HELP_NOW",
+      "reason": "Supplier 70 min away, 50 min to spare",
+      "latency_ms": 795,
+      "ok": true,
+      "problems": [],
+      "mode": "live"
+    },
+    {
+      "id": "maria",
+      "expected": "R3",
+      "got": "R3",
+      "level": "HELP_SOON",
+      "reason": "1 backup left",
+      "latency_ms": 649,
+      "ok": true,
+      "problems": [],
+      "mode": "live"
+    },
+    {
+      "id": "linh",
+      "expected": "R5",
+      "got": "R5",
+      "level": "NEEDS_SUPPLIES",
+      "reason": "Needs a place to charge",
+      "latency_ms": 679,
+      "ok": true,
+      "problems": [],
+      "mode": "live"
+    },
+    {
+      "id": "emrg_indirect1",
+      "expected": "R0",
+      "got": "R0",
+      "level": "HELP_NOW",
+      "reason": "Said they're not safe",
+      "latency_ms": 663,
+      "ok": true,
+      "problems": [],
+      "mode": "live"
+    },
+    {
+      "id": "emrg_indirect2",
+      "expected": "R0",
+      "got": "R0",
+      "level": "HELP_NOW",
+      "reason": "Said it's an emergency",
+      "latency_ms": 690,
+      "ok": true,
+      "problems": [],
+      "mode": "live"
+    },
+    {
+      "id": "emrg_indirect3",
+      "expected": "R0",
+      "got": "R0",
+      "level": "HELP_NOW",
+      "reason": "Said it's an emergency",
+      "latency_ms": 693,
+      "ok": true,
+      "problems": [],
+      "mode": "live"
+    },
+    {
+      "id": "notsafe1",
+      "expected": "R0",
+      "got": "R0",
+      "level": "HELP_NOW",
+      "reason": "Said they're not safe",
+      "latency_ms": 616,
+      "ok": true,
+      "problems": [],
+      "mode": "live"
+    },
+    {
+      "id": "notsafe2",
+      "expected": "R0",
+      "got": "R0",
+      "level": "HELP_NOW",
+      "reason": "Said they're not safe",
+      "latency_ms": 552,
+      "ok": true,
+      "problems": [],
+      "mode": "live"
+    },
+    {
+      "id": "vague1",
+      "expected": "R4",
+      "got": "R4",
+      "level": "PERSON_CHECK",
+      "reason": "Answers unclear",
+      "latency_ms": 698,
+      "ok": true,
+      "problems": [],
+      "mode": "live"
+    },
+    {
+      "id": "vague2",
+      "expected": "R4",
+      "got": "R4",
+      "level": "PERSON_CHECK",
+      "reason": "Answers unclear",
+      "latency_ms": 700,
+      "ok": true,
+      "problems": [],
+      "mode": "live"
+    },
+    {
+      "id": "food_only",
+      "expected": "R5",
+      "got": "R5",
+      "level": "NEEDS_SUPPLIES",
+      "reason": "Needs food",
+      "latency_ms": 605,
+      "ok": true,
+      "problems": [],
+      "mode": "live"
+    },
+    {
+      "id": "all_ok1",
+      "expected": "R6",
+      "got": "R6",
+      "level": "OK_FOR_NOW",
+      "reason": "Enough supply. Calling again at 4:31 AM",
+      "latency_ms": 596,
+      "ok": true,
+      "problems": [],
+      "mode": "live"
+    },
+    {
+      "id": "all_ok2",
+      "expected": "R6",
+      "got": "R6",
+      "level": "OK_FOR_NOW",
+      "reason": "Enough supply. Calling again at 4:31 AM",
+      "latency_ms": 835,
+      "ok": true,
+      "problems": [],
+      "mode": "live"
+    }
+  ],
+  "summary": {
+    "total": 24,
+    "exact_rule_matches": 24,
+    "missed_help_now": 0,
+    "under_escalated": 0,
+    "over_escalated": 0,
+    "median_latency_ms": 686,
+    "max_latency_ms": 943,
+    "extraction_failures": []
+  }
+}

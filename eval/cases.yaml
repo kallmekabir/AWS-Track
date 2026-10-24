@@ -1,0 +1,208 @@
+# CareCall ranking eval cases. Spec: docs/RANKING.md ("Test cases for eval/run.py").
+# Each case:
+#   id, answers (5, matching lambdas/lex_hook.py QUESTIONS 1-5), device_group,
+#   backup_hours_each, drive_minutes, expected (rule id).
+# Optional:
+#   no_answer: 2    -> use rules.no_answer_decision(2), skip Bedrock (case 10)
+#   facts: {...}    -> used by --offline to skip Bedrock (rules-only test)
+#
+# answers[i] is the spoken reply to QUESTION i+1:
+#   1 safe?  2 device working?  3 backups?  4 hours left?  5 anything else?
+
+# ---- The 10 RANKING.md cases ----
+- id: rk01
+  answers: ["I can't breathe well", "", "", "", ""]
+  device_group: 1
+  backup_hours_each: 2
+  drive_minutes: 25
+  expected: R0
+  facts: {safe: unsure, device_working: unsure, backup_left: null, hours_left: null, needs: [], emergency: true, confidence: 0.9}
+
+- id: rk02
+  answers: ["I'm not okay, I'm scared", "", "", "", ""]
+  device_group: 1
+  backup_hours_each: 2
+  drive_minutes: 25
+  expected: R0
+  facts: {safe: "no", device_working: unsure, backup_left: null, hours_left: null, needs: [], emergency: false, confidence: 0.9}
+
+- id: rk03
+  answers: ["Yes", "No, the machine is off", "None left", "Zero", "No"]
+  device_group: 1
+  backup_hours_each: 2
+  drive_minutes: 25
+  expected: R1
+  facts: {safe: yes, device_working: "no", backup_left: 0, hours_left: 0, needs: [], emergency: false, confidence: 0.9}
+
+- id: rk04
+  answers: ["Yes", "Yes, on the tank", "One tank", "About two hours", "No"]
+  device_group: 1
+  backup_hours_each: 2
+  drive_minutes: 70
+  expected: R2
+  facts: {safe: yes, device_working: yes, backup_left: 1, hours_left: 2, needs: [], emergency: false, confidence: 0.9}
+
+- id: rk05
+  answers: ["Yes", "Yes, on the tank", "One tank", "About two hours", "No"]
+  device_group: 1
+  backup_hours_each: 2
+  drive_minutes: 15
+  expected: R3
+  facts: {safe: yes, device_working: yes, backup_left: 1, hours_left: 2, needs: [], emergency: false, confidence: 0.9}
+
+- id: rk06
+  answers: ["Yes", "Yes", "Two tanks", "About three hours", "No"]
+  device_group: 2
+  backup_hours_each: 1.5
+  drive_minutes: 20
+  expected: R3
+  facts: {safe: yes, device_working: yes, backup_left: 2, hours_left: 3, needs: [], emergency: false, confidence: 0.9}
+
+- id: rk07
+  answers: ["I think so", "Uh, it's on something", "Not sure", "A while I guess", "I don't know"]
+  device_group: 1
+  backup_hours_each: 2
+  drive_minutes: 20
+  expected: R4
+  facts: {safe: unsure, device_working: unsure, backup_left: null, hours_left: null, needs: [], emergency: false, confidence: 0.4}
+
+- id: rk08
+  answers: ["Yes", "Yes, working on battery", "Four batteries", "About ten hours", "Just need some food"]
+  device_group: 3
+  backup_hours_each: 3
+  drive_minutes: 20
+  expected: R5
+  facts: {safe: yes, device_working: yes, backup_left: 4, hours_left: 10, needs: [food], emergency: false, confidence: 0.9}
+
+- id: rk09
+  answers: ["Yes all good", "Yes", "Plenty", "About eight hours", "Nothing needed"]
+  device_group: 2
+  backup_hours_each: 4
+  drive_minutes: 20
+  expected: R6
+  facts: {safe: yes, device_working: yes, backup_left: 3, hours_left: 8, needs: [], emergency: false, confidence: 0.9}
+
+- id: rk10
+  no_answer: 2
+  device_group: 1
+  backup_hours_each: 2
+  drive_minutes: 25
+  expected: NA
+
+# ---- 4 worked-example personas (docs/RANKING.md Zone A demo) ----
+- id: daniel
+  answers: ["Yes", "It's off. The backup didn't kick in.", "None", "Zero, it's dead", "No"]
+  device_group: 1
+  backup_hours_each: 2
+  drive_minutes: 25
+  expected: R1
+  facts: {safe: yes, device_working: "no", backup_left: 0, hours_left: 0, needs: [], emergency: false, confidence: 0.9}
+
+- id: ruth
+  answers: ["Yes", "Yes, on the tank", "One tank left", "About two hours", "No"]
+  device_group: 1
+  backup_hours_each: 2
+  drive_minutes: 70
+  expected: R2
+  facts: {safe: yes, device_working: yes, backup_left: 1, hours_left: 2, needs: [], emergency: false, confidence: 0.9}
+
+- id: maria
+  answers: ["Yes", "Yes", "One tank", "Maybe two hours", "I can't drive to get more"]
+  device_group: 1
+  backup_hours_each: 2
+  drive_minutes: 15
+  expected: R3
+  facts: {safe: yes, device_working: yes, backup_left: 1, hours_left: 2, needs: [transport, oxygen_delivery], emergency: false, confidence: 0.9}
+
+- id: linh
+  answers: ["Yes", "Yes", "Three tanks", "Around nine hours", "A place to charge would help"]
+  device_group: 1
+  backup_hours_each: 3
+  drive_minutes: 20
+  expected: R5
+  facts: {safe: yes, device_working: yes, backup_left: 3, hours_left: 9, needs: [charging], emergency: false, confidence: 0.9}
+
+# ---- 3 indirect emergencies (R0) ----
+- id: emrg_indirect1
+  answers: ["I feel dizzy and the machine stopped", "", "", "", ""]
+  device_group: 1
+  backup_hours_each: 2
+  drive_minutes: 25
+  expected: R0
+  facts: {safe: unsure, device_working: "no", backup_left: null, hours_left: null, needs: [], emergency: true, confidence: 0.8}
+
+- id: emrg_indirect2
+  answers: ["My chest hurts a lot right now", "", "", "", ""]
+  device_group: 2
+  backup_hours_each: 2
+  drive_minutes: 25
+  expected: R0
+  facts: {safe: unsure, device_working: unsure, backup_left: null, hours_left: null, needs: [], emergency: true, confidence: 0.85}
+
+- id: emrg_indirect3
+  answers: ["I fell and I can't get up", "", "", "", ""]
+  device_group: 3
+  backup_hours_each: 2
+  drive_minutes: 25
+  expected: R0
+  facts: {safe: unsure, device_working: unsure, backup_left: null, hours_left: null, needs: [], emergency: true, confidence: 0.85}
+
+# ---- 2 not-safe (R0) ----
+- id: notsafe1
+  answers: ["No, I don't feel safe at all", "Yes", "One", "Three hours", "No"]
+  device_group: 2
+  backup_hours_each: 3
+  drive_minutes: 20
+  expected: R0
+  facts: {safe: "no", device_working: yes, backup_left: 1, hours_left: 3, needs: [], emergency: false, confidence: 0.9}
+
+- id: notsafe2
+  answers: ["No it's not safe here", "Yes", "Two", "Six hours", "No"]
+  device_group: 3
+  backup_hours_each: 3
+  drive_minutes: 20
+  expected: R0
+  facts: {safe: "no", device_working: yes, backup_left: 2, hours_left: 6, needs: [], emergency: false, confidence: 0.9}
+
+# ---- extra messy/vague (R4) ----
+- id: vague1
+  answers: ["Umm maybe", "I can't tell", "A few?", "Not sure really", "Dunno"]
+  device_group: 1
+  backup_hours_each: 2
+  drive_minutes: 20
+  expected: R4
+  facts: {safe: unsure, device_working: unsure, backup_left: null, hours_left: null, needs: [], emergency: false, confidence: 0.3}
+
+- id: vague2
+  answers: ["I guess so", "It's doing something", "Some tanks", "A while maybe", "Hard to say"]
+  device_group: 1
+  backup_hours_each: 2
+  drive_minutes: 20
+  expected: R4
+  facts: {safe: unsure, device_working: unsure, backup_left: null, hours_left: null, needs: [], emergency: false, confidence: 0.4}
+
+# ---- food-only (R5) ----
+- id: food_only
+  answers: ["Yes", "Yes", "Plenty, four", "Around ten hours", "Could use some food"]
+  device_group: 3
+  backup_hours_each: 3
+  drive_minutes: 20
+  expected: R5
+  facts: {safe: yes, device_working: yes, backup_left: 4, hours_left: 10, needs: [food], emergency: false, confidence: 0.9}
+
+# ---- all-OK (R6) ----
+- id: all_ok1
+  answers: ["Yes I'm fine", "Working fine", "Four tanks", "About twelve hours", "No nothing"]
+  device_group: 2
+  backup_hours_each: 3
+  drive_minutes: 20
+  expected: R6
+  facts: {safe: yes, device_working: yes, backup_left: 4, hours_left: 12, needs: [], emergency: false, confidence: 0.95}
+
+- id: all_ok2
+  answers: ["Yes doing well", "Yes it's on power", "Three", "Nine hours or so", "Nope all set"]
+  device_group: 3
+  backup_hours_each: 3
+  drive_minutes: 20
+  expected: R6
+  facts: {safe: yes, device_working: yes, backup_left: 3, hours_left: 9, needs: [], emergency: false, confidence: 0.95}

@@ -68,6 +68,14 @@ ROSTER = [
                backups_on_file=1, backup_hours_each=10),
 ]
 
+# Demo drive times (minutes) from the nearest supplier, by persona. In production these
+# come from the Amazon Location route matrix; for the demo they live in the registry so
+# the worked example in docs/RANKING.md is reproducible without AWS Location.
+DRIVE_MINUTES = {
+    "Daniel Kim": 25, "Ruth Okafor": 70, "Maria Lopez": 15, "Linh Tran": 20,
+    "Samuel Reyes": 30, "Alice Moore": 40, "George Patel": 20, "Henry Wu": 35,
+}
+
 
 def load_local_phones(path: Path = LOCAL_SEED_PATH) -> dict[str, str]:
     """Read seed.local.json into {persona name: teammate phone}. Missing file means no teammates."""
@@ -103,7 +111,7 @@ def seed_residents(path: Path = LOCAL_SEED_PATH) -> list[Resident]:
         data = row.model_dump()
         if row.name in phones:
             data.update(phone=phones[row.name], allow_call=True)
-        residents.append(Resident(id=f"r-{i:03d}", **data))
+        residents.append(Resident(id=f"r-{i:03d}", drive_minutes=DRIVE_MINUTES.get(row.name), **data))
     return residents
 
 

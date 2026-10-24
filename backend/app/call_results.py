@@ -1,5 +1,8 @@
-"""Collect Lex answers from Connect attributes after a contact disconnects."""
-from app import calling, script, store
+"""Collect Lex answers from Connect attributes after a contact disconnects, then rank.
+
+Bedrock only extracts facts (app/understand.py); app/rules.py decides the level.
+"""
+from app import calling, rules, script, store, understand
 from app.models import Resident, Status
 
 
@@ -23,9 +26,28 @@ def to_transcript(attrs: dict) -> list[dict]:
             if attrs.get(f"a{q}", "").strip()]
 
 
-def extract_facts(transcript: list[dict]):
-    """PHASE 2 HOOK: Bedrock fact extraction and round 2 ranking go here."""
-    return None
+def rank_call(resident: Resident, transcript: list[dict], emergency: bool) -> dict:
+    """Bedrock extracts facts, round 2 rules decide the level. Returns the store changes.
+
+    Never raises: on any Bedrock trouble, facts are unknown and rule R4 sends the resident
+    to a person. `emergency` is the script's own phrase/intent check; it can only add an
+    emergency (Bedrock can never remove one), matching the live call path.
+    """
+    extraction = understand.extract_facts(transcript, said_emergency=emergency)
+    decision = rules.rank_after_call(extraction.facts, resident, resident.drive_minutes)
+    return {
+        "status": decision.level,
+        "rule_id": decision.rule_id,
+        "reason": decision.reason,
+        "hours_left": decision.hours_left,
+        "runs_out_at": decision.runs_out_at,
+        "time_to_spare": decision.time_to_spare,
+        "recheck_at": decision.recheck_at,
+        "emergency": extraction.facts.emergency,
+        "facts": extraction.facts.model_dump(),
+        "ai": {"model_id": extraction.model_id, "latency_ms": extraction.latency_ms,
+               "ok": extraction.ok, "problems": extraction.problems},
+    }
 
 
 def finish_call(resident: Resident) -> bool:
@@ -38,11 +60,11 @@ def finish_call(resident: Resident) -> bool:
         return False  # start_call has claimed the resident but has not finished dialing
     attrs = fetch(resident.contact_id)
     transcript = to_transcript(attrs)
-    if attrs.get("intent") == "Emergency" or any(
-            script.is_emergency(a["answer"]) for a in transcript):
-        changes = {"status": Status.HELP_NOW, "rule_id": "R0",
-                   "reason": "Said it's an emergency", "emergency": True}
-    elif attrs.get("answered") != "yes" or not transcript:
+    emergency = attrs.get("intent") == "Emergency" or any(
+        script.is_emergency(a["answer"]) for a in transcript)
+
+    if not emergency and (attrs.get("answered") != "yes" or not transcript):
+        # Missed call / no input -> no Bedrock. Kept exactly as before.
         missed = resident.missed_calls + 1
         if missed >= calling.MAX_MISSED_CALLS:
             changes = {"status": Status.HELP_SOON, "rule_id": "NA",
@@ -51,13 +73,11 @@ def finish_call(resident: Resident) -> bool:
             changes = {"status": Status.NOT_CALLED, "rule_id": None,
                        "reason": f"No answer ({missed} try). Calling again"}
         changes["missed_calls"] = missed
-    elif len(transcript) == len(script.QUESTIONS):
-        extract_facts(transcript)
-        changes = {"status": Status.PERSON_CHECK, "rule_id": None,
-                   "reason": "All 5 answers in. Waiting for ranking"}
     else:
-        changes = {"status": Status.PERSON_CHECK, "rule_id": None,
-                   "reason": f"Call ended after question {transcript[-1]['q']} of 5"}
+        # Emergency, full or partial answers: Bedrock extracts, rules decide.
+        # R0 still wins for emergencies (emergency=True forces it), and we still save facts.
+        changes = rank_call(resident, transcript, emergency)
+
     changes.update(transcript=transcript, current_question=0,
                    last_activity_at=calling._now())
     done = store.transition(resident.id, Status.CALLING, changes,
@@ -66,6 +86,7 @@ def finish_call(resident: Resident) -> bool:
         return False
     store.add_checkin(resident.id, {
         "source": "call", "status": done.status.value, "rule_id": done.rule_id,
-        "reason": done.reason, "transcript": transcript})
+        "reason": done.reason, "facts": done.facts, "ai": done.ai,
+        "transcript": transcript})
     calling.dial_next(done.zone)
     return True

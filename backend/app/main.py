@@ -13,12 +13,20 @@ from typing import Optional
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 
-from app import calling, store
+from app import call_results, calling, script, store
 from app.models import (CheckInIn, OutageIn, Resident, ResidentIn, ResidentOut,
                         ResidentPatch)
 
 _log = logging.getLogger(__name__)
+
+
+class TranscriptIn(BaseModel):
+    """Typed answers for the demo safety net (POST /residents/{id}/transcript)."""
+    answers: list[str] = Field(default_factory=list, max_length=5,
+                               examples=[["yes", "yes it's on the tank", "one tank left",
+                                          "about two hours", "no"]])
 
 
 async def _check_calls_forever():
@@ -135,6 +143,26 @@ def reset_demo(zone: Optional[str] = None):
 @app.post("/residents/{resident_id}/checkins", response_model=ResidentOut)
 def add_checkin(resident_id: str, body: CheckInIn):
     return _out(_found(store.record_checkin(resident_id, body)))
+
+
+@app.post("/residents/{resident_id}/transcript", response_model=ResidentOut)
+def typed_transcript(resident_id: str, body: TranscriptIn):
+    """Rank a resident from typed answers (Bedrock + round 2 rules). Demo safety net if a
+    phone call can't be placed; same ranking path as a real call (call_results.rank_call)."""
+    resident = _found(store.get_resident(resident_id))
+    transcript = [{"q": q, "question": question, "answer": body.answers[q - 1]}
+                  for q, question in script.QUESTIONS.items()
+                  if q - 1 < len(body.answers) and body.answers[q - 1].strip()]
+    emergency = any(script.is_emergency(a["answer"]) for a in transcript)
+    changes = call_results.rank_call(resident, transcript, emergency)
+    changes.update(transcript=transcript, current_question=0, last_activity_at=calling._now())
+    done = store.transition(resident_id, resident.status, changes)
+    if done is None:
+        raise HTTPException(status_code=409, detail="Could not save; resident changed or missing")
+    store.add_checkin(resident_id, {
+        "source": "typed", "status": done.status.value, "rule_id": done.rule_id,
+        "reason": done.reason, "facts": done.facts, "ai": done.ai, "transcript": transcript})
+    return _out(done)
 
 
 @app.get("/residents/{resident_id}/checkins")

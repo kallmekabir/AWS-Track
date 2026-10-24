@@ -93,11 +93,19 @@ class Resident(ResidentIn):
     rule_id: Optional[str] = None
     reason: Optional[str] = None
     hours_left: Optional[float] = None
+    time_to_spare: Optional[float] = Field(
+        default=None, description="hours_left minus drive time, in hours (docs/RANKING.md)")
     runs_out_at: Optional[datetime] = Field(
         default=None, description="When their backup is expected to run out")
+    recheck_at: Optional[datetime] = Field(
+        default=None, description="When to call again (NEEDS_SUPPLIES / OK_FOR_NOW only)")
     drive_minutes: Optional[float] = Field(
         default=None, description="Drive time from the nearest supplier (Phase 2)")
     emergency: bool = False
+    facts: Optional[dict] = Field(
+        default=None, description="What Bedrock extracted (understand.Facts as a dict)")
+    ai: Optional[dict] = Field(
+        default=None, description="How Bedrock did: model_id, latency_ms, ok, problems")
     transcript: list[Answer] = Field(default_factory=list)
     # The current (or last) phone call
     contact_id: Optional[str] = Field(default=None, description="Amazon Connect ContactId")

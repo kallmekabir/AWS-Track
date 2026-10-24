@@ -87,7 +87,7 @@ Rules for the prompt: never guess. If the person didn't say it, use `null` or `"
 | Name | How | Notes |
 | --- | --- | --- |
 | `hours_left` | From Bedrock. If it's null, use `backup_left × backup_hours_each` (from the registry) when both are known | Otherwise unknown |
-| `drive_minutes` | Shortest drive time from any supplier to the home, from Amazon Location `calculate_route_matrix` | Saved on the resident; unknown if Location fails |
+| `drive_minutes` | Shortest drive time from any supplier to the home, from Amazon Location `calculate_route_matrix` | Saved on the resident; unknown if Location fails. For the demo, drive times come from the registry (`app/seed.py` `DRIVE_MINUTES`); the Amazon Location route matrix is the production source |
 | `time_to_spare` | `hours_left − drive_minutes / 60` | If `drive_minutes` is unknown, use `hours_left` and show "drive time unknown" |
 | `runs_out_at` | `now + hours_left` | Drives the countdown on the dashboard |
 | `recheck_at` | `runs_out_at − 1 hour`, but no sooner than 30 minutes from now and no later than 3 hours from now | Only for "Needs supplies" and "OK for now" |

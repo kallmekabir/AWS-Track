@@ -23,7 +23,8 @@ RESIDENTS_TABLE = os.getenv("RESIDENTS_TABLE", "")
 CHECKINS_TABLE = os.getenv("CHECKINS_TABLE", "")
 
 # Fields that describe the current outage. A new outage resets them; registry fields stay.
-_LIVE_FIELDS = ("status", "rule_id", "reason", "hours_left", "runs_out_at", "emergency",
+_LIVE_FIELDS = ("status", "rule_id", "reason", "hours_left", "time_to_spare", "runs_out_at",
+                "recheck_at", "emergency", "facts", "ai",
                 "transcript", "contact_id", "call_started_at", "last_activity_at",
                 "current_question", "missed_calls", "last_error")
 
@@ -248,9 +249,9 @@ def list_checkins(resident_id: str) -> list[dict]:
 
 
 def queue(zone: Optional[str] = None) -> list[Resident]:
-    """Dashboard order: level first, then least hours left (unknown counts as 0), then
-    device group, then id. Phase 2 swaps hours left for time to spare."""
+    """Dashboard order (docs/RANKING.md, "The order of the dashboard list"): level first,
+    then least time to spare (unknown counts as 0), then device group, then id."""
     def sort_key(r: Resident):
-        hours = r.hours_left if r.hours_left is not None else 0
-        return (QUEUE_ORDER[r.status], hours, r.device_group or 3, r.id)
+        spare = r.time_to_spare if r.time_to_spare is not None else 0
+        return (QUEUE_ORDER[r.status], spare, r.device_group or 3, r.id)
     return sorted(list_residents(zone), key=sort_key)
