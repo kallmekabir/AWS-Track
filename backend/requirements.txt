@@ -1,0 +1,5 @@
+# Packaged into the Lambda functions by `sam build`.
+fastapi>=0.115
+pydantic>=2.7
+mangum>=0.17
+boto3>=1.34

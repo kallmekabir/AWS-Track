@@ -1,0 +1,190 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: CareCall backend - dashboard API and Lex code hook for 4-at-a-time check-in calls
+
+# Deploy from backend/:  sam build && sam deploy --guided --profile carecall
+# Step-by-step order (Connect instance first, Lex bot after this stack): connect/SETUP.md
+
+Parameters:
+  ConnectInstanceId:
+    Type: String
+    Description: Amazon Connect instance ID (the last part of the instance ARN)
+    AllowedPattern: "^[0-9a-f-]{36}$"
+  ConnectContactFlowId:
+    Type: String
+    Default: ""
+    Description: Published contact flow ID. Leave empty on the first deploy, then deploy again with it
+  ConnectSourceNumber:
+    Type: String
+    Default: ""
+    Description: The claimed Connect number in E.164 (+1...), shown as caller ID
+  ConnectQueueId:
+    Type: String
+    Default: ""
+    Description: Only if ConnectSourceNumber is empty - a queue whose outbound caller ID is set
+  DialerAllowList:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: Comma-separated E.164 numbers of consenting teammates. No other number is ever called
+  AllowedOrigins:
+    Type: String
+    Default: http://localhost:5173
+    Description: Comma-separated dashboard origins allowed by CORS (add the Amplify URL later)
+  MaxLines:
+    Type: Number
+    Default: 4
+    MinValue: 1
+    MaxValue: 10
+    Description: Calls at the same time (a new Connect instance allows 10 concurrent calls)
+  NoAnswerSeconds:
+    Type: Number
+    Default: 120
+    Description: A call with no answer for this long counts as ended
+  RingTimeoutSeconds:
+    Type: Number
+    Default: 20
+    MinValue: 15
+    MaxValue: 60
+    Description: How long a phone rings before Connect gives up (short, so voicemail does not answer)
+
+Globals:
+  Function:
+    Runtime: python3.13
+    Architectures: [x86_64]
+    CodeUri: .
+    MemorySize: 512
+    Environment:
+      Variables:
+        RESIDENTS_TABLE: !Ref ResidentsTable
+        CHECKINS_TABLE: !Ref CheckinsTable
+        CONNECT_INSTANCE_ID: !Ref ConnectInstanceId
+        CONNECT_CONTACT_FLOW_ID: !Ref ConnectContactFlowId
+        CONNECT_SOURCE_NUMBER: !Ref ConnectSourceNumber
+        CONNECT_QUEUE_ID: !Ref ConnectQueueId
+        DIALER_ALLOW_LIST: !Ref DialerAllowList
+        ALLOWED_ORIGINS: !Ref AllowedOrigins
+        MAX_LINES: !Ref MaxLines
+        NO_ANSWER_SECONDS: !Ref NoAnswerSeconds
+        RING_TIMEOUT_SECONDS: !Ref RingTimeoutSeconds
+
+Resources:
+  # ---- Storage: shared by both functions ----
+
+  ResidentsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+
+  CheckinsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: resident_id
+          AttributeType: S
+        - AttributeName: at
+          AttributeType: S
+      KeySchema:
+        - AttributeName: resident_id
+          KeyType: HASH
+        - AttributeName: at
+          KeyType: RANGE
+
+  # ---- The dashboard API: FastAPI running inside Lambda (Mangum) ----
+
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      # CORS is answered by FastAPI (ALLOWED_ORIGINS), so none is configured here.
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 50   # this API places real phone calls; keep it from being hammered
+        ThrottlingRateLimit: 20
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: CareCall dashboard API - FastAPI via Mangum
+      Handler: app.main.handler
+      Timeout: 29   # API Gateway gives up at 30 seconds
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ResidentsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CheckinsTable
+        - Statement:
+            # StartOutboundVoiceContact has no resource-level permissions, so it needs "*".
+            - Effect: Allow
+              Action: connect:StartOutboundVoiceContact
+              Resource: "*"
+            - Effect: Allow
+              Action: connect:DescribeContact
+              Resource: !Sub arn:${AWS::Partition}:connect:${AWS::Region}:${AWS::AccountId}:instance/${ConnectInstanceId}/contact/*
+      Events:
+        AllRoutes:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+
+  ApiFunctionLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ApiFunction}
+      RetentionInDays: 7
+
+  # ---- The Lex code hook: runs on every answer during a call ----
+
+  LexHookFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: CareCall Lex code hook - asks the 5 questions and saves the answers
+      Handler: lambdas.lex_hook.handler
+      Timeout: 10   # Lex waits for each answer's reply; keep the caller from hearing silence
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ResidentsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CheckinsTable
+        - Statement:
+            # Starts the next call when a line frees up (calling.dial_next).
+            - Effect: Allow
+              Action: connect:StartOutboundVoiceContact
+              Resource: "*"
+            - Effect: Allow
+              Action: connect:DescribeContact
+              Resource: !Sub arn:${AWS::Partition}:connect:${AWS::Region}:${AWS::AccountId}:instance/${ConnectInstanceId}/contact/*
+
+  LexHookLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${LexHookFunction}
+      RetentionInDays: 7   # transcripts are in these logs; keep them short-lived
+
+  LexInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt LexHookFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: lexv2.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub arn:${AWS::Partition}:lex:${AWS::Region}:${AWS::AccountId}:bot-alias/*
+
+Outputs:
+  ApiUrl:
+    Description: Put this in web/.env.local as VITE_API_URL
+    Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}
+  LexHookFunctionName:
+    Description: Choose this function for the Lex bot's live alias (connect/SETUP.md step 3)
+    Value: !Ref LexHookFunction
+  ResidentsTableName:
+    Description: RESIDENTS_TABLE in backend/.env, for python -m app.seed
+    Value: !Ref ResidentsTable
+  CheckinsTableName:
+    Description: CHECKINS_TABLE in backend/.env
+    Value: !Ref CheckinsTable

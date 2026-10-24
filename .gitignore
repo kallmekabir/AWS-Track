@@ -22,6 +22,11 @@ cdk.context.json
 # Real demo residents (teammates' phones); commit only data/residents.sample.csv
 data/private/
 
+# CareCall backend: teammates' real phones, SAM build output and saved deploy answers
+backend/seed.local.json
+.aws-sam/
+samconfig.toml
+
 # Eval artifacts that change every run (commit the final report on purpose)
 eval/runs/
 

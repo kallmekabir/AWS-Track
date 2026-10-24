@@ -1,0 +1,4 @@
+# Local development only (not packaged into Lambda).
+-r requirements.txt
+uvicorn[standard]>=0.30
+python-dotenv>=1.0
