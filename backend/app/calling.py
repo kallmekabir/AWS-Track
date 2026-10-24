@@ -27,7 +27,6 @@ from app.ranking import round1_order
 
 MAX_LINES = int(os.getenv("MAX_LINES", "4"))
 NO_ANSWER_SECONDS = int(os.getenv("NO_ANSWER_SECONDS", "120"))
-RING_TIMEOUT_SECONDS = int(os.getenv("RING_TIMEOUT_SECONDS", "20"))  # hang up before voicemail
 MAX_MISSED_CALLS = 2               # docs/RANKING.md, rule NA
 CHECK_EVERY_SECONDS = 5            # check_calls runs on dashboard polls; this keeps it cheap
 
@@ -103,8 +102,9 @@ def _place_call(resident: Resident) -> str:
         "ContactFlowId": FLOW_ID,
         "DestinationPhoneNumber": resident.phone,
         "Attributes": {"residentId": resident.id},
-        "RingTimeoutInSeconds": RING_TIMEOUT_SECONDS,
         "ClientToken": str(uuid4()),  # makes the automatic retry safe: never two calls
+        # No RingTimeoutInSeconds: Connect only allows it on campaign calls, which are
+        # blocked by default. Phones ring for Connect's default 60 seconds.
         "Description": f"CareCall check-in for {resident.id}",
     }
     if SOURCE_NUMBER:

@@ -67,7 +67,7 @@ Answer the prompts:
 | ConnectQueueId | leave empty |
 | DialerAllowList | the 4 teammates' numbers, comma-separated, e.g. `+14085551234,+14085555678,…` |
 | AllowedOrigins | keep `http://localhost:5173` (add the Amplify URL later) |
-| MaxLines / NoAnswerSeconds / RingTimeoutSeconds | keep the defaults (4 / 120 / 20) |
+| MaxLines / NoAnswerSeconds | keep the defaults (4 / 120) |
 | "ApiFunction has no authentication. Is this okay?" | `y` (demo only; see the note below) |
 | Save arguments to configuration file | `y` (saves `samconfig.toml`, which git ignores) |
 

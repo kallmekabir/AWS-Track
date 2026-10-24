@@ -196,7 +196,6 @@ DIALER_ALLOW_LIST=                  # teammates' numbers, comma-separated (pytho
 CONNECT_DRY_RUN=                    # 1 = fake calls
 MAX_LINES=4
 NO_ANSWER_SECONDS=120
-RING_TIMEOUT_SECONDS=20
 ALLOWED_ORIGINS=http://localhost:5173
 BEDROCK_MODEL_ID=                   # Phase 2: an Amazon Nova text model ID from the Bedrock console
 SNS_TOPIC_ARN=                      # Phase 2

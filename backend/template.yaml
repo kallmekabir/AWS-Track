@@ -41,12 +41,6 @@ Parameters:
     Type: Number
     Default: 120
     Description: A call with no answer for this long counts as ended
-  RingTimeoutSeconds:
-    Type: Number
-    Default: 20
-    MinValue: 15
-    MaxValue: 60
-    Description: How long a phone rings before Connect gives up (short, so voicemail does not answer)
 
 Globals:
   Function:
@@ -66,7 +60,6 @@ Globals:
         ALLOWED_ORIGINS: !Ref AllowedOrigins
         MAX_LINES: !Ref MaxLines
         NO_ANSWER_SECONDS: !Ref NoAnswerSeconds
-        RING_TIMEOUT_SECONDS: !Ref RingTimeoutSeconds
 
 Resources:
   # ---- Storage: shared by both functions ----
