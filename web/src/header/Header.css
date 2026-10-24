@@ -1,0 +1,149 @@
+.hdr {
+  --hdr-muted: var(--graphite);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 32px;
+  min-height: 76px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--sheet);
+  color: var(--ink);
+}
+
+/* Once calls start, the header turns ink: the room is in incident mode. */
+.hdr--active {
+  --hdr-muted: #a9b6c2;
+  border-bottom-color: var(--ink);
+  background: var(--ink);
+  color: #fff;
+}
+
+.hdr :focus-visible {
+  outline-color: currentColor;
+}
+
+.brand {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.brand-name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-24);
+  line-height: 1;
+  letter-spacing: 0.01em;
+}
+
+.brand-org {
+  color: var(--hdr-muted);
+  font-size: var(--fs-12);
+  line-height: 1.2;
+}
+
+.hdr-outage {
+  flex: 1;
+  min-width: 220px;
+}
+
+.hdr-outage-name {
+  font-weight: 600;
+  font-size: var(--fs-18);
+  line-height: 1.2;
+}
+
+.hdr-outage-meta {
+  max-width: 52ch;
+  color: var(--hdr-muted);
+  font-size: var(--fs-14);
+}
+
+/* The time now: runs-out times in the list are read against it. */
+.hdr-clock {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.hdr-clock-label {
+  color: var(--hdr-muted);
+  font-size: var(--fs-12);
+}
+
+.hdr-clock-time {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--fs-48);
+  line-height: 0.9;
+  letter-spacing: -0.01em;
+}
+
+.hdr-clock-meridiem {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--fs-18);
+}
+
+.hdr-counts {
+  display: flex;
+  gap: 20px;
+}
+
+.hdr-counts dt {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--hdr-muted);
+  font-size: var(--fs-12);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.hdr-counts dd {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--fs-24);
+  line-height: 1.1;
+}
+
+.hdr-flags {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hdr-flag {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 7px;
+  border: 1px dashed currentColor;
+  border-radius: 3px;
+  font-size: var(--fs-12);
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.hdr-flag--warn {
+  border-style: solid;
+}
+
+/* The one big action. */
+.btn--start {
+  height: 52px;
+  padding: 0 24px;
+  font-size: var(--fs-16);
+}
+
+.btn--light {
+  background: #fff;
+  color: var(--ink);
+  border-color: #fff;
+}
+
+.btn--light:hover:not(:disabled) {
+  background: var(--paper);
+  border-color: var(--paper);
+}

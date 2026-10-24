@@ -294,22 +294,26 @@ access, Python 3.12, Node 20, AWS CDK v2, and Kiro.
 
 ```bash
 git clone <this repo> && cd careline
-cp .env.example .env               # fill in IDs after deploying
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+scripts/bootstrap.sh               # toolchain, credentials, pinned dependencies, CDK bootstrap
 python scripts/build_geo_data.py   # validates data/*.csv, writes hospitals GeoJSON/JSON
-cd infra && cdk deploy --all       # tables, workflows, Lambdas, API, dashboard, map key
-python scripts/seed.py             # 40 synthetic residents from RESIDENTS_CSV, 5 resource sites
+(cd infra && cdk synth --strict && cdk diff --all)
+(cd infra && cdk deploy --all)      # run after reviewing the diff
+python scripts/validate_setup.py
+python scripts/seed.py             # idempotent synthetic residents and resource sites
+scripts/configure_web.sh           # local ignored map config, build, and web deploy
 ```
 
 `scripts/seed.py` reads `data/private/residents.csv` (gitignored, shared out of band) and
-falls back to `data/residents.sample.csv`. After deploying, read the map key with
-`aws location describe-key --key-name careline-map-key`, put it in `web/.env.local` as
-`VITE_LOCATION_API_KEY`, then build and deploy the web app. Never commit the key.
+falls back to `data/residents.sample.csv`. `scripts/configure_web.sh` reads the deployed
+map key into ignored `web/.env.local`, then builds and deploys the web app. Never commit
+the key.
 
-Then, in the Amazon Connect console: claim a number (or enable web calling), import
-`connect/CareLine-Outbound.json`, and attach the `CareLineCheckIn` Lex bot and the
-`lex_hook` Lambda.
+The scripts and CDK stacks are planned automation. Account/model access, phone-number
+claiming, any quota or registration prompts, and the final consented Connect test call
+remain human-gated. If number claiming is blocked, use the web-call fallback. The
+deployment should create the Connect instance, Lex bot and contact-flow draft; review
+and publish the flow before placing the test call. Never commit `.env` or
+`web/.env.local`.
 
 ## Building with Kiro
 

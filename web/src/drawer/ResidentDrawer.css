@@ -1,0 +1,258 @@
+/* Opens over the map's right edge; the map pads its camera so the person stays in view. */
+.drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  width: var(--drawer-w);
+  border-left: 1px solid var(--rule-strong);
+  background: var(--sheet);
+  box-shadow: -12px 0 28px rgba(20, 32, 44, 0.08);
+  animation: drawer-in 0.18s ease-out;
+}
+
+.drawer:focus {
+  outline: none;
+}
+
+@keyframes drawer-in {
+  from {
+    opacity: 0;
+    translate: 18px 0;
+  }
+}
+
+.dr-head {
+  --tab: var(--lvl-waiting);
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 14px 12px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.dr-head--now { --tab: var(--lvl-now); }
+.dr-head--soon { --tab: var(--lvl-soon); }
+.dr-head--check { --tab: var(--lvl-check); }
+.dr-head--supplies { --tab: var(--lvl-supplies); }
+.dr-head--ok { --tab: var(--lvl-ok); }
+.dr-head--calling { --tab: var(--lvl-calling); }
+.dr-head--waiting { --tab: var(--rule-strong); }
+
+/* The same tab as the list row, carried into the details. */
+.dr-rank {
+  display: flex;
+  align-items: center;
+  min-width: 42px;
+  height: 40px;
+  padding-left: 16px;
+  border-left: 7px solid var(--tab);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--fs-36);
+  line-height: 1;
+}
+
+.dr-head--calling .dr-rank {
+  border-left-style: double;
+}
+
+.dr-who {
+  flex: 1;
+  min-width: 0;
+}
+
+.dr-title {
+  font-weight: 700;
+  font-size: var(--fs-21);
+  line-height: 1.15;
+}
+
+.dr-sub {
+  margin-top: 3px;
+  color: var(--graphite);
+  font-size: var(--fs-14);
+}
+
+.dr-close {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--sheet);
+  cursor: pointer;
+}
+
+.dr-close:hover {
+  background: var(--paper);
+}
+
+.dr-body {
+  flex: 1;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 4px 16px 24px;
+}
+
+.dr-decision {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  padding: 12px 0 14px;
+}
+
+.dr-rule {
+  font-weight: 600;
+  font-size: var(--fs-16);
+}
+
+.dr-section {
+  padding: 12px 0 14px;
+  border-top: 1px solid var(--rule);
+}
+
+.dr-h {
+  margin-bottom: 8px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--fs-18);
+  line-height: 1.1;
+}
+
+.dr-muted {
+  color: var(--graphite);
+  font-size: var(--fs-14);
+}
+
+.dr-muted code {
+  font-family: var(--font-code);
+  font-size: 0.9em;
+}
+
+/* ---- backup runway ---- */
+
+.dr-runway-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  font-size: var(--fs-14);
+}
+
+.dr-big {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--fs-36);
+  line-height: 1;
+}
+
+.dr-track {
+  position: relative;
+  height: 10px;
+  margin: 12px 0 4px;
+  border-radius: 5px;
+  background: var(--paper);
+}
+
+.dr-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 5px;
+  background: var(--ink-3);
+  transition: width 1s linear;
+}
+
+.dr-r3 {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 1.5px;
+  background: var(--ink);
+}
+
+.dr-track-labels {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  height: 16px;
+  margin-bottom: 8px;
+  color: var(--graphite);
+  font-size: var(--fs-12);
+}
+
+.dr-track-labels > span:nth-child(2) {
+  position: absolute;
+  transform: translateX(-50%);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.dr-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  margin-top: 6px;
+}
+
+.dr-facts dt {
+  color: var(--graphite);
+  font-size: var(--fs-12);
+}
+
+.dr-facts dd {
+  font-weight: 600;
+  font-size: var(--fs-16);
+}
+
+/* ---- what they said ---- */
+
+.dr-answers {
+  display: grid;
+  gap: 10px;
+}
+
+.dr-answer {
+  display: grid;
+  gap: 2px;
+}
+
+.dr-q {
+  color: var(--graphite);
+  font-size: var(--fs-12);
+  line-height: 1.35;
+}
+
+.dr-a {
+  font-weight: 600;
+  font-size: var(--fs-16);
+  line-height: 1.35;
+}
+
+.dr-error {
+  margin-top: 8px;
+  color: var(--lvl-now);
+  font-weight: 600;
+  font-size: var(--fs-14);
+}
+
+.dr-call {
+  margin-top: 12px;
+}
+
+@media (max-width: 1000px) {
+  .drawer {
+    position: fixed;
+    top: auto;
+    left: 0;
+    width: auto;
+    height: 82vh;
+    border-left: 0;
+    border-top: 1px solid var(--rule-strong);
+    box-shadow: 0 -12px 28px rgba(20, 32, 44, 0.14);
+  }
+}

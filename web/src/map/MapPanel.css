@@ -1,0 +1,61 @@
+.map-panel {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  background: #eef0f1;
+}
+
+.map-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.map-legend {
+  position: absolute;
+  z-index: 2;
+  left: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 11px;
+  max-width: calc(100% - 160px);
+  padding: 6px 9px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.96);
+  font-size: var(--fs-12);
+  line-height: 1.2;
+}
+
+.lg-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.lg-note {
+  color: var(--graphite);
+  white-space: nowrap;
+}
+
+/* Always visible: every pin is a made-up resident. */
+.map-badge {
+  position: absolute;
+  z-index: 2;
+  bottom: 12px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 4px;
+  background: var(--ink);
+  color: #fff;
+  font-size: var(--fs-12);
+  font-weight: 600;
+  line-height: 24px;
+  transition: right 0.18s ease-out;
+}
+
+/* Keep MapLibre's attribution clear of the badge. */
+.map-panel .maplibregl-ctrl-bottom-right {
+  bottom: 40px;
+}

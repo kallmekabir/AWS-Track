@@ -136,21 +136,26 @@ Do all setup in the first hour, because a new Amazon Connect instance can block 
 
 **Hour-0 checklist (person A unless noted):**
 
-- [ ] In the event-provided account, confirm Connect and Bedrock are allowed, then create the Connect instance (`careline-demo`), with inbound and outbound calling enabled.
-- [ ] Claim a US DID phone number. If it fails with a limit error, open a support case and switch to the web-call fallback immediately.
-- [ ] Enable Bedrock model access for a fast Claude Haiku model and a Claude Sonnet model, and turn on model invocation logging to CloudWatch Logs for the video (B).
-- [ ] Create a Lex V2 bot `CareLineCheckIn` with locales en\_US, es\_US, hi\_IN (A).
-- [ ] Confirm Amazon Location is allowed: run one `geo-routes` `CalculateRouteMatrix` between two San Jose points from the event account (B).
-- [ ] Create the map API key `careline-map-key` (tiles only, localhost referrer, expires Oct 31) and load the Monochrome Light style in a blank Vite page (C). If the style returns 403 with `geo-maps:GetTile` alone, widen to `geo-maps:*`.
-- [ ] Create an AWS Budgets alert at $25 with email to the whole team (D).
-- [ ] Create one IAM role per Lambda with least privilege; no shared admin keys in code (B).
-- [ ] Set up the repo and Kiro workspace, with `.kiro/steering/` files committed (D, see the Kiro section).
+- [ ] **Human preflight:** confirm the event account, region, Connect access, Bedrock model access, Location access, and the team email list. Ask the AWS mentors for a pre-provisioned Connect instance or number; these account/quota gates cannot be made reliable by a deployment script.
+- [ ] **Automated:** run `scripts/bootstrap.sh` to verify Python/Node/CDK/credentials, create or activate the local Python environment, install pinned dependencies, and run `cdk bootstrap` for `us-east-1` only when the target environment is not already bootstrapped. The script must print the AWS account and region and stop on a mismatch.
+- [ ] **Automated:** run `cd infra && cdk synth --strict`, review `cdk diff --all`, then `cdk deploy --all`. The stacks create the data tables, per-function least-privilege roles, Lambdas, API, workflows, Lex bot, Bedrock invocation logging to CloudWatch, Amazon Location map key, budget alert, and web hosting resources. Deploy must not create shared admin credentials.
+- [ ] **Automated:** run `scripts/validate_setup.py` after deployment. It checks required resources/configuration, confirms the Location Routes call between two San Jose points, and writes a concise readiness report without printing secrets.
+- [ ] **Automated:** run `scripts/seed.py` to load the synthetic residents and resource sites. Real teammate phone numbers remain in the ignored `data/private/residents.csv`; the dialer allow-list is populated explicitly from consenting teammates and is never inferred from the CSV.
+- [ ] **Human-gated:** claim a US DID only after the Connect instance is ready. If claiming fails with a quota error, open a support case and switch to web calling immediately; do not retry claims in a loop.
+- [ ] **Human check:** review the generated Connect contact flow, attach/publish it, and place one consented test call. The deployment may create the Connect instance, queues, Lex bot and draft flow, but outbound number claims and validating the live call remain operator actions.
+- [ ] **Automated:** run `scripts/configure_web.sh` to fetch the map key into ignored `web/.env.local`, set region/style values, build the web app and deploy it. The key is restricted to map tiles and localhost plus the deployed app's referrer; it is never committed.
+- [ ] **Automated:** CDK creates the $25 budget alert. A human confirms that the notification email addresses are correct and received.
+- [ ] **Manual one-time:** commit `.kiro/steering/` files and open the workspace in Kiro (D, see the Kiro section).
 
-**Infrastructure as code.** Use AWS CDK in Python (or SAM if the team prefers). Kiro can generate the stacks from the design spec. Stack names: `CareLineData`, `CareLineCore`, `CareLineApi`, `CareLineWeb`. Configure Connect, the contact flow and the Lex bot in the console first, export the flow JSON into the repo, and only automate them if time allows.
+**Infrastructure as code and setup automation.** Use AWS CDK in Python. The setup scripts are thin, repeatable wrappers around local checks and CDK commands; AWS resources remain declared in code. Use stack names `CareLineData`, `CareLineCore`, `CareLineApi`, and `CareLineWeb`, with explicit `us-east-1` environment configuration. Keep stateful tables in `CareLineData`, enable termination protection on that stack during the demo, and review `cdk diff` before every deployment. Use CDK's generated least-privilege grants rather than shared roles. Set explicit removal policies for demo resources; only disposable web assets may be auto-deleted on teardown.
+
+Automate the Connect instance, queues, Lex bot/locales, and contact-flow draft through CDK where the available resource types support the required configuration. Keep claiming a phone number, granting account/model access, resolving quota or registration prompts, confirming budget email delivery, and the final consented test call as human gates. If a Connect or Lex resource cannot be represented cleanly in CDK, track that single console action in the readiness report and export its resulting configuration into `connect/`; do not make the whole setup console-only.
+
+**Setup scripts to add:** `scripts/bootstrap.sh` (toolchain, credentials and CDK bootstrap), `scripts/validate_setup.py` (AWS resource and service smoke checks), and `scripts/configure_web.sh` (fetch the restricted map key to ignored local config, build and deploy). Each script must be safe to rerun, fail closed on account/region mismatch, and avoid writing credentials or secret values to logs. `scripts/seed.py` remains idempotent so a rerun does not duplicate records.
 
 **Environment variables (Lambda):** `TABLE_RESIDENTS`, `TABLE_CALLS`, `TABLE_TASKS`, `TABLE_AUDIT`, `CONNECT_INSTANCE_ID`, `CONNECT_FLOW_ID`, `CONNECT_SOURCE_NUMBER`, `BEDROCK_EXTRACT_MODEL_ID`, `BEDROCK_COPILOT_MODEL_ID`, `TABLE_OUTAGES`, `STATE_MACHINE_RESIDENT_CHECK_ARN`, `STATE_MACHINE_CALL_WAVE_ARN`, `DIAL_SPACING_SECONDS`, `SIMULATE_UNLISTED`, `HOSPITAL_CANDIDATES` (3), `ROUTE_CACHE_MIN` (15), `DRIVE_TIE_WINDOW_MIN` (30).
 
-**Environment variables (web, in `web/.env.local`):** `VITE_AWS_REGION`, `VITE_LOCATION_API_KEY` (read with `aws location describe-key --key-name careline-map-key` after deploying; never commit it), `VITE_MAP_STYLE` (Monochrome).
+**Environment variables (web, in ignored `web/.env.local`):** `VITE_AWS_REGION`, `VITE_LOCATION_API_KEY` (written by `scripts/configure_web.sh` from the deployed key; never commit it), `VITE_MAP_STYLE` (Monochrome). The script emits only the key name and write status in logs, not the key value.
 
 **Cost guardrails.** Connect bills per minute of voice; keep demo calls under 2 minutes. Delete the instance after judging. Release the phone number before deleting, since repeated claim-and-release cycles can block future claims for months.
 
