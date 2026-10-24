@@ -14,6 +14,12 @@ Parameters:
   AppPort:
     Type: Number
     Default: 8000
+  AuthFunctionArn:
+    Type: String
+    Description: CloudFront Function ARN for basic auth (default behavior)
+  AuthStripFunctionArn:
+    Type: String
+    Description: CloudFront Function ARN for basic auth + /api strip (api behavior)
 
 Resources:
   WebBucket:
@@ -42,22 +48,6 @@ Resources:
         SigningBehavior: always
         SigningProtocol: sigv4
 
-  StripApiFunction:
-    Type: AWS::CloudFront::Function
-    Properties:
-      Name: careline-strip-api
-      AutoPublish: true
-      FunctionConfig:
-        Comment: Strip leading /api from the URI for the API behavior
-        Runtime: cloudfront-js-2.0
-      FunctionCode: |
-        function handler(event) {
-          var req = event.request;
-          if (req.uri === '/api' || req.uri === '/api/') { req.uri = '/'; }
-          else if (req.uri.startsWith('/api/')) { req.uri = req.uri.substring(4); }
-          return req;
-        }
-
   Distribution:
     Type: AWS::CloudFront::Distribution
     Properties:
@@ -83,6 +73,9 @@ Resources:
           ViewerProtocolPolicy: redirect-to-https
           # CachingOptimized managed policy
           CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !Ref AuthFunctionArn
         CacheBehaviors:
           - PathPattern: /api/*
             TargetOriginId: ec2-core
@@ -94,7 +87,7 @@ Resources:
             OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
             FunctionAssociations:
               - EventType: viewer-request
-                FunctionARN: !GetAtt StripApiFunction.FunctionMetadata.FunctionARN
+                FunctionARN: !Ref AuthStripFunctionArn
         CustomErrorResponses:
           - ErrorCode: 403
             ResponseCode: 200
