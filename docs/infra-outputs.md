@@ -20,6 +20,9 @@ reference the Secrets Manager secret name or the API key ID instead.
 | careline-strip-api | CloudFront Function | careline-strip-api | - | H4 | Strips leading /api on the /api/* viewer-request |
 | CareLine CDN | CloudFront distribution | E36C3FDSEFOK86 / d1baurlz014iv6.cloudfront.net | /careline/web/distribution-id, /careline/web/url | H4 | default->S3 (SPA), /api/*->EC2:8000 |
 | ALLOWED_ORIGINS | config | https://d1baurlz014iv6.cloudfront.net,http://localhost:5173 | /careline/config/allowed-origins | H4 | Pushed into instance backend.env |
+| CareLineData | CFN stack | CareLineData | - | (data) | Two DynamoDB tables, no IAM |
+| careline-residents | DynamoDB table | careline-residents | /careline/tables/residents | (data) | PK id(S), on-demand, PITR off, DeletionPolicy Delete |
+| careline-checkins | DynamoDB table | careline-checkins | /careline/tables/checkins | (data) | PK resident_id(S), SK at(S), TTL expires_at, on-demand, PITR off, DeletionPolicy Delete |
 
 ## Scripts
 - scripts/push_creds.sh - push current CLI session creds to /etc/careline/credentials (EC2 Instance Connect), restart careline-core
