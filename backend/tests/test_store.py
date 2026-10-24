@@ -48,3 +48,29 @@ class TransitionTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class QueueOrderTest(unittest.TestCase):
+    def test_not_called_sort_by_round1_a_group1_zero_backup_follows_daniel(self):
+        from app.models import Resident
+        # Fresh roster, nobody called yet: queue order must follow round 1
+        # (device group, then fewest backups on file, then id), reusing ranking.round1_key.
+        residents = [
+            Resident(id="r-001", name="Daniel Kim", phone="+14085550102", address="a",
+                     lat=0, lng=0, device="Home ventilator", backups_on_file=0),   # group 1, 0 backups
+            Resident(id="r-002", name="Ruth", phone="+14085550103", address="a",
+                     lat=0, lng=0, device="Oxygen concentrator", backups_on_file=1),  # group 1, 1 backup
+            Resident(id="r-050", name="Rosa", phone="+14085550199", address="a",
+                     lat=0, lng=0, device="Oxygen concentrator", backups_on_file=0),  # group 1, 0 backups
+            Resident(id="r-007", name="George", phone="+14085550127", address="a",
+                     lat=0, lng=0, device="CPAP machine", backups_on_file=1),         # group 3
+        ]
+        store.use_memory(residents)
+        order = [r.id for r in store.queue()]
+        # Daniel and Rosa both group 1 with 0 backups -> tie broken by id: r-001 then r-050,
+        # both before Ruth (1 backup) and George (group 3).
+        self.assertEqual(order, ["r-001", "r-050", "r-002", "r-007"])
+
+
+if __name__ == "__main__":
+    unittest.main()

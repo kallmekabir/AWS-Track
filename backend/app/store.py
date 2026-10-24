@@ -15,7 +15,7 @@ from typing import Optional
 import boto3
 from boto3.dynamodb.conditions import Attr, Key
 
-from app import seed
+from app import ranking, seed
 from app.models import (QUEUE_ORDER, CheckInIn, Resident, ResidentIn,
                         ResidentPatch, Status)
 
@@ -261,9 +261,14 @@ def list_checkins(resident_id: str) -> list[dict]:
 
 
 def queue(zone: Optional[str] = None) -> list[Resident]:
-    """Dashboard order (docs/RANKING.md, "The order of the dashboard list"): level first,
-    then least time to spare (unknown counts as 0), then device group, then id."""
+    """Dashboard order (docs/RANKING.md, "The order of the dashboard list"): level first.
+    Called residents then sort by least time to spare (unknown counts as 0), device group,
+    id. Not-yet-called residents sort by round 1 calling order (device group, then fewest
+    backups on file, then id), reusing app/ranking.round1_key, so the list previews who
+    will be called next."""
     def sort_key(r: Resident):
+        if r.status == Status.NOT_CALLED:
+            return (QUEUE_ORDER[r.status], ranking.round1_key(r))
         spare = r.time_to_spare if r.time_to_spare is not None else 0
-        return (QUEUE_ORDER[r.status], spare, r.device_group or 3, r.id)
+        return (QUEUE_ORDER[r.status], (spare, r.device_group or 3, r.id))
     return sorted(list_residents(zone), key=sort_key)
