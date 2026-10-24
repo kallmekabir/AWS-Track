@@ -6,7 +6,7 @@
 // Mock mode plays the whole pipeline, including Phase 2 (Bedrock facts, drive time,
 // round 2 ranking), which the real backend doesn't do yet. In the real demo only the
 // four teammate personas are callable; here all eight are, so the line refill shows.
-import type { Status } from '../api'
+import type { Ai, Facts, Status } from '../api'
 
 /** Word for word from backend/app/script.py (QUESTIONS). */
 export const QUESTIONS = [
@@ -34,7 +34,7 @@ export interface MockPerson {
   answers: string[] | null
   /** Extra seconds this call takes, so calls don't all end together. */
   extra: number
-  result?: { status: Status; rule_id: string; reason: string; hours_left: number | null }
+  result?: { status: Status; rule_id: string; reason: string; hours_left: number | null; facts?: Facts; ai?: Ai }
 }
 
 const person = (p: Omit<MockPerson, 'phone'> & { phone4: string }): MockPerson => {
@@ -67,7 +67,9 @@ export const ROSTER: MockPerson[] = [
       'About two hours, I think.',
       "Someone to bring more oxygen. I can't get there in time.",
     ],
-    result: { status: 'HELP_NOW', rule_id: 'R2', reason: 'Supplier 70 min away, 50 min to spare', hours_left: 2 },
+    result: { status: 'HELP_NOW', rule_id: 'R2', reason: 'Supplier 70 min away, 50 min to spare', hours_left: 2,
+      facts: { safe: 'yes', device_working: 'yes', backup_left: 1, hours_left: 2, needs: ['oxygen_delivery'], emergency: false, confidence: 0.9 },
+      ai: { model_id: 'us.amazon.nova-lite-v1:0', latency_ms: 712, ok: true, problems: [] } },
   }),
   person({
     id: 'r-003', name: 'Maria Lopez', phone4: '0101', address: '412 Elm St, San Jose, CA',
@@ -80,7 +82,9 @@ export const ROSTER: MockPerson[] = [
       'Maybe two hours.',
       "I can't drive to get more.",
     ],
-    result: { status: 'HELP_SOON', rule_id: 'R3', reason: '1 backup left', hours_left: 2 },
+    result: { status: 'HELP_SOON', rule_id: 'R3', reason: '1 backup left', hours_left: 2,
+      facts: { safe: 'yes', device_working: 'yes', backup_left: 1, hours_left: 2, needs: ['transport'], emergency: false, confidence: 0.88 },
+      ai: { model_id: 'us.amazon.nova-lite-v1:0', latency_ms: 668, ok: true, problems: [] } },
   }),
   person({
     id: 'r-004', name: 'Linh Tran', phone4: '0121', address: '57 Maple Dr, San Jose, CA',
@@ -106,7 +110,9 @@ export const ROSTER: MockPerson[] = [
       'A while, I guess.',
       "I don't know. Maybe my son knows.",
     ],
-    result: { status: 'PERSON_CHECK', rule_id: 'R4', reason: 'Answers unclear', hours_left: null },
+    result: { status: 'PERSON_CHECK', rule_id: 'R4', reason: 'Answers unclear', hours_left: null,
+      facts: { safe: 'unsure', device_working: 'unsure', backup_left: null, hours_left: null, needs: [], emergency: false, confidence: 0.35 },
+      ai: { model_id: 'us.amazon.nova-lite-v1:0', latency_ms: 731, ok: true, problems: ['hours_left: null is not valid'] } },
   }),
   person({
     id: 'r-007', name: 'George Patel', phone4: '0127', address: '16 Walnut St, San Jose, CA',

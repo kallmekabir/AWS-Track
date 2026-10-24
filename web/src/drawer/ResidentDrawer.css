@@ -244,6 +244,18 @@
   margin-top: 12px;
 }
 
+.dr-ranked {
+  margin-top: 8px;
+  font-weight: 600;
+  font-size: var(--fs-14);
+}
+
+.dr-problems {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: var(--fs-13, 13px);
+}
+
 @media (max-width: 1000px) {
   .drawer {
     position: fixed;

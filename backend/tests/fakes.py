@@ -40,6 +40,27 @@ class FakeConnect:
         return {"Attributes": self.attributes.get(params["InitialContactId"], {})}
 
 
+class FakeContactLens:
+    """Returns canned Contact Lens real-time CUSTOMER turns per contact."""
+
+    def __init__(self):
+        self.turns: dict[str, list[str]] = {}  # contact_id -> customer sentences, in order
+
+    def set_turns(self, contact_id: str, sentences: list[str]):
+        self.turns[contact_id] = sentences
+
+    def list_realtime_contact_analysis_segments(self, **params):
+        cid = params["ContactId"]
+        segs = []
+        for i, content in enumerate(self.turns.get(cid, [])):
+            segs.append({"Transcript": {"Id": f"t{i}", "ParticipantRole": "CUSTOMER",
+                                        "Content": content, "BeginOffsetMillis": i * 1000}})
+        # add an AGENT turn to prove we filter it out
+        segs.insert(0, {"Transcript": {"Id": "agent", "ParticipantRole": "AGENT",
+                                       "Content": "Are you safe right now?", "BeginOffsetMillis": 0}})
+        return {"Segments": segs}
+
+
 def team_roster():
     """The demo roster; Daniel, Ruth, Maria and Linh carry the 4 teammates' phones."""
     residents = seed.seed_residents(path=Path("/nonexistent/seed.local.json"))
@@ -49,8 +70,10 @@ def team_roster():
     return residents
 
 
-def use_fake_connect(test, max_lines: int = 4, fake: FakeConnect = None) -> FakeConnect:
+def use_fake_connect(test, max_lines: int = 4, fake: FakeConnect = None,
+                     contact_lens: "FakeContactLens" = None) -> FakeConnect:
     """Point calling.py at a fake Connect and a fresh in-memory store for one test."""
+    from app import call_results
     fake = fake or FakeConnect()
     store.use_memory(team_roster())
     patcher = mock.patch.multiple(
@@ -59,4 +82,9 @@ def use_fake_connect(test, max_lines: int = 4, fake: FakeConnect = None) -> Fake
         MAX_LINES=max_lines, _client=fake)
     patcher.start()
     test.addCleanup(patcher.stop)
+    cl = contact_lens or FakeContactLens()
+    cl_patcher = mock.patch.multiple(call_results, INSTANCE_ID="instance-1", _cl_client=cl)
+    cl_patcher.start()
+    test.addCleanup(cl_patcher.stop)
+    fake.contact_lens = cl
     return fake

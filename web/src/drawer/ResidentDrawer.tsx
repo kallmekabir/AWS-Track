@@ -4,7 +4,7 @@
 import { useEffect, useRef } from 'react'
 import type { Hospital, Resident } from '../api'
 import { levelToken } from '../map/colors'
-import { callProgress, canCallAgain, DEVICE_GROUP_TEXT, deviceLine, RULE_TEXT } from '../lib/levels'
+import { callProgress, canCallAgain, DEVICE_GROUP_TEXT, deviceLine, NEED_TEXT, RULE_TEXT, yesNoText } from '../lib/levels'
 import { minutesLeft } from '../lib/runway'
 import { clock, span } from '../lib/time'
 import { LevelChip } from '../ui/LevelChip'
@@ -89,11 +89,7 @@ export function ResidentDrawer({ resident: r, hospitals, place, now, onClose, on
 
         <section className="dr-section">
           <h3 className="dr-h">Bedrock's facts</h3>
-          <p className="dr-muted">
-            Bedrock turns these answers into facts (safe, device working, backups left, hours left, needs). They appear
-            here once Phase 2 saves them (<code>app/understand.py</code>). Bedrock only extracts; the rule above sets
-            the level.
-          </p>
+          <BedrockFacts resident={r} />
         </section>
 
         <section className="dr-section">
@@ -168,5 +164,81 @@ function Backup({ resident: r, hospitals, now }: { resident: Resident; hospitals
         )}
       </dl>
     </section>
+  )
+}
+
+
+// Bedrock's facts: plain-word rows, how the model did, and the rule that ranked it.
+// Shows nothing (not an error) when facts is missing: not called yet, or a missed call.
+function BedrockFacts({ resident: r }: { resident: Resident }) {
+  const f = r.facts
+  if (!f) {
+    return <p className="dr-muted">No facts yet. Bedrock reads the answers when a call is ranked.</p>
+  }
+  const needs = f.needs.filter((n) => n !== 'none')
+  const spareMin = r.time_to_spare == null ? null : Math.round(r.time_to_spare * 60)
+  return (
+    <>
+      <dl className="dr-facts">
+        <div>
+          <dt>Safe</dt>
+          <dd>{yesNoText(f.safe)}</dd>
+        </div>
+        <div>
+          <dt>Device working</dt>
+          <dd>{yesNoText(f.device_working)}</dd>
+        </div>
+        <div>
+          <dt>Backups left</dt>
+          <dd className="num">{f.backup_left === null ? 'not sure' : f.backup_left}</dd>
+        </div>
+        <div>
+          <dt>Hours left</dt>
+          <dd className="num">{f.hours_left === null ? 'not sure' : `${f.hours_left} h`}</dd>
+        </div>
+        <div>
+          <dt>Needs</dt>
+          <dd>{needs.length ? needs.map((n) => NEED_TEXT[n] ?? n).join(', ') : 'nothing'}</dd>
+        </div>
+        <div>
+          <dt>Emergency</dt>
+          <dd>{f.emergency ? 'yes' : 'no'}</dd>
+        </div>
+        <div>
+          <dt>Confidence</dt>
+          <dd className="num">{Math.round(f.confidence * 100)}%</dd>
+        </div>
+      </dl>
+
+      {r.ai && !r.ai.ok ? (
+        <div className="dr-error">
+          <p>Bedrock could not read this call. A person must check.</p>
+          {r.ai.problems.length > 0 && (
+            <ul className="dr-problems">
+              {r.ai.problems.map((p, i) => (
+                <li key={i}>{p}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : (
+        r.ai && (
+          <p className="dr-muted">
+            Read by <span className="num">{r.ai.model_id}</span> in <span className="num">{r.ai.latency_ms}</span> ms.
+          </p>
+        )
+      )}
+
+      {r.rule_id && (
+        <p className="dr-ranked">
+          Ranked by rule <span className="num">{r.rule_id}</span> · {r.reason}
+        </p>
+      )}
+      {spareMin !== null && (
+        <p className="dr-muted">
+          <span className="num">{spareMin}</span> min to spare.
+        </p>
+      )}
+    </>
   )
 }

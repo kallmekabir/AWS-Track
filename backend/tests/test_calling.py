@@ -4,6 +4,7 @@ from datetime import timedelta
 from app import calling, store
 from app.models import Status
 from tests.fakes import TEAM_PHONES, FakeConnect, use_fake_connect
+from tests.test_understand import FakeBedrock, use_fake_bedrock
 
 
 class StartOutageTest(unittest.TestCase):
@@ -87,8 +88,13 @@ class EndedCallsTest(unittest.TestCase):
         self.assertEqual((daniel.status, daniel.rule_id), (Status.HELP_SOON, "NA"))
         self.assertIn("No answer (2 tries)", daniel.reason)
 
-    def test_hang_up_partway_needs_a_person(self):
+    def test_hang_up_partway_is_ranked(self):
+        # Partial answers now go through Bedrock + rules; an unclear/low-confidence
+        # extraction lands at R4 "Answers unclear" (a person must check), not a cutoff note.
         fake = use_fake_connect(self, max_lines=1)
+        use_fake_bedrock(self, FakeBedrock({
+            "safe": "unsure", "device_working": "unsure", "backup_left": None,
+            "hours_left": None, "needs": [], "emergency": False, "confidence": 0.3}))
         calling.start_outage("A")
         contact_id = store.get_resident("r-001").contact_id
         fake.attributes[contact_id] = {"answered": "yes", "intent": "CheckIn", "a1": "yes"}
@@ -96,8 +102,8 @@ class EndedCallsTest(unittest.TestCase):
         calling.check_calls(force=True)
 
         daniel = store.get_resident("r-001")
-        self.assertEqual(daniel.status, Status.PERSON_CHECK)
-        self.assertEqual(daniel.reason, "Call ended after question 1 of 5")
+        self.assertEqual((daniel.status, daniel.rule_id), (Status.PERSON_CHECK, "R4"))
+        self.assertIsNotNone(daniel.facts)
         self.assertEqual(len(store.list_checkins("r-001")), 1)
 
     def test_timer_catches_silent_calls(self):

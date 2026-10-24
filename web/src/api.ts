@@ -43,6 +43,26 @@ export interface HospitalRoute {
 }
 
 // Mirrors ResidentOut in backend/app/models.py. The phone arrives masked.
+
+// What Bedrock extracted (backend app/understand.py Facts). null until a call is ranked.
+export interface Facts {
+  safe: 'yes' | 'no' | 'unsure'
+  device_working: 'yes' | 'no' | 'unsure'
+  backup_left: number | null
+  hours_left: number | null
+  needs: string[]
+  emergency: boolean
+  confidence: number
+}
+
+// How Bedrock did on this call (backend ai field).
+export interface Ai {
+  model_id: string
+  latency_ms: number
+  ok: boolean
+  problems: string[]
+}
+
 export interface Resident {
   id: string
   name: string
@@ -60,11 +80,15 @@ export interface Resident {
   rule_id: string | null
   reason: string | null
   hours_left: number | null
+  time_to_spare: number | null
   runs_out_at: string | null
+  recheck_at: string | null
   drive_minutes: number | null
   nearest_hospital_id: string | null
   location_updated_at: string | null
   emergency: boolean
+  facts: Facts | null
+  ai: Ai | null
   transcript: Answer[]
   contact_id: string | null
   call_started_at: string | null

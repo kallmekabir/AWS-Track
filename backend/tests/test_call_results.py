@@ -8,7 +8,8 @@ from botocore.exceptions import ClientError
 
 from app import call_results, calling, script, store
 from app.models import Status
-from tests.fakes import use_fake_connect
+from tests.fakes import FakeContactLens, use_fake_connect
+from tests.test_understand import GOOD, FakeBedrock, use_fake_bedrock
 
 
 FULL_CALL = {"answered": "yes", "intent": "CheckIn", "a1": "yes I'm okay",
@@ -44,24 +45,31 @@ class CallResultsTest(unittest.TestCase):
         self.assertEqual(len(done.transcript), 5)
 
     def test_five_answers_saved_then_next_person_called(self):
-        with mock.patch.object(call_results, "extract_facts", return_value=None) as extract:
-            done = self.finish(FULL_CALL)
-        self.assertEqual(done.status, Status.PERSON_CHECK)
-        self.assertEqual(done.reason, "All 5 answers in. Waiting for ranking")
+        use_fake_bedrock(self, FakeBedrock(GOOD))   # safe/device yes, 1 tank, 2 h
+        done = self.finish(FULL_CALL)
+        # Full answers now go through Bedrock + rules (not the old "Waiting for ranking").
+        self.assertEqual(done.status, Status.HELP_SOON)
+        self.assertEqual(done.rule_id, "R3")        # Daniel group 1, 1 backup left
+        self.assertIsNotNone(done.facts)
+        self.assertTrue(done.ai["ok"])
         expected = [{"q": q, "question": script.QUESTIONS[q], "answer": FULL_CALL[f"a{q}"]}
                     for q in range(1, 6)]
         self.assertEqual([a.model_dump() for a in done.transcript], expected)
-        extract.assert_called_once_with(expected)
         self.assertEqual(store.list_checkins(done.id)[0]["transcript"], expected)
+        self.assertEqual(store.list_checkins(done.id)[0]["facts"], done.facts)
         self.assertEqual(self.fake.attribute_requests,
                          [{"InstanceId": "instance-1", "InitialContactId": self.contact_id}])
         self.assertEqual(self.fake.called_ids(), ["r-001", "r-002"])
 
     def test_partial_call(self):
+        # Partial answers are ranked too; an unclear extraction -> R4.
+        use_fake_bedrock(self, FakeBedrock({
+            "safe": "yes", "device_working": "yes", "backup_left": None,
+            "hours_left": None, "needs": [], "emergency": False, "confidence": 0.3}))
         done = self.finish({"answered": "yes", "intent": "CheckIn", "a1": "yes", "a2": "working"})
-        self.assertEqual(done.status, Status.PERSON_CHECK)
-        self.assertEqual(done.reason, "Call ended after question 2 of 5")
+        self.assertEqual((done.status, done.rule_id), (Status.PERSON_CHECK, "R4"))
         self.assertEqual(len(done.transcript), 2)
+        self.assertIsNotNone(done.facts)
         self.assertEqual(len(store.list_checkins(done.id)), 1)
 
     def test_empty_answers_are_missed(self):
@@ -146,4 +154,125 @@ class TranscriptTest(unittest.TestCase):
                          [{"q": 5, "question": script.QUESTIONS[5], "answer": "  Food please  "}])
 
     def test_phase_two_hook_is_placeholder(self):
-        self.assertIsNone(call_results.extract_facts([]))
+        # The stub is gone; rank_call now returns a real decision with facts + ai.
+        use_fake_bedrock(self, FakeBedrock(GOOD))
+        resident = store.get_resident("r-002")  # Ruth, drive 70
+        transcript = call_results.to_transcript(FULL_CALL)
+        changes = call_results.rank_call(resident, transcript, emergency=False)
+        self.assertEqual(changes["status"], Status.HELP_NOW)   # Ruth 70 min -> R2
+        self.assertEqual(changes["rule_id"], "R2")
+        self.assertIn("facts", changes)
+        self.assertTrue(changes["ai"]["ok"])
+
+
+ONE_TANK_TWO_HOURS = {"safe": "yes", "device_working": "yes", "backup_left": 1,
+                      "hours_left": 2, "needs": [], "emergency": False, "confidence": 0.9}
+
+
+class RankingWiringTest(unittest.TestCase):
+    """Ported from finish/no-lambda: Bedrock + round-2 rules wired into the call path."""
+
+    def _finish(self, fake, attrs, resident_id="r-001"):
+        contact = store.get_resident(resident_id).contact_id
+        fake.attributes[contact] = attrs
+        fake.hung_up.add(contact)
+        calling.check_calls(force=True)
+        return store.get_resident(resident_id)
+
+    def test_full_answers_ranked_with_facts(self):
+        fake = use_fake_connect(self, max_lines=1)
+        use_fake_bedrock(self, FakeBedrock(GOOD))
+        calling.start_outage("A")
+        done = self._finish(fake, FULL_CALL)
+        self.assertIn(done.rule_id, ("R1", "R2", "R3"))
+        self.assertIsNotNone(done.facts)
+        self.assertTrue(done.ai["ok"])
+
+    def test_emergency_intent_is_r0_with_facts(self):
+        fake = use_fake_connect(self, max_lines=1)
+        use_fake_bedrock(self, FakeBedrock(GOOD))   # Bedrock says emergency False
+        calling.start_outage("A")
+        done = self._finish(fake, {**FULL_CALL, "intent": "Emergency"})
+        self.assertEqual((done.status, done.rule_id, done.emergency),
+                         (Status.HELP_NOW, "R0", True))
+        self.assertIsNotNone(done.facts)   # facts still saved
+
+    def test_bedrock_failure_ranks_r4(self):
+        fake = use_fake_connect(self, max_lines=1)
+        throttled = ClientError({"Error": {"Code": "ThrottlingException", "Message": "slow"}},
+                                "Converse")
+        use_fake_bedrock(self, FakeBedrock(error=throttled))
+        calling.start_outage("A")
+        done = self._finish(fake, FULL_CALL)
+        self.assertEqual((done.status, done.rule_id), (Status.PERSON_CHECK, "R4"))
+        self.assertFalse(done.ai["ok"])
+
+    def test_queue_ruth_r2_above_maria_r3(self):
+        use_fake_connect(self)
+        use_fake_bedrock(self, FakeBedrock(ONE_TANK_TWO_HOURS))
+        from app import main
+        from app.main import TranscriptIn
+        answers = ["yes", "yes on the tank", "one tank", "about two hours", "no"]
+        ruth = main.typed_transcript("r-002", TranscriptIn(answers=answers))
+        maria = main.typed_transcript("r-003", TranscriptIn(answers=answers))
+        self.assertEqual((ruth.status, ruth.rule_id), (Status.HELP_NOW, "R2"))
+        self.assertEqual((maria.status, maria.rule_id), (Status.HELP_SOON, "R3"))
+        order = [r.id for r in store.queue("A")]
+        self.assertLess(order.index("r-002"), order.index("r-003"))
+
+    def test_typed_endpoint_masks_phone(self):
+        use_fake_connect(self)
+        use_fake_bedrock(self, FakeBedrock(ONE_TANK_TWO_HOURS))
+        from app import main
+        from app.main import TranscriptIn
+        out = main.typed_transcript("r-002", TranscriptIn(answers=[
+            "yes", "yes it's on the tank", "one tank left", "about two hours", "no"]))
+        self.assertRegex(out.phone, r"^\+1-XXX-XXX-\d{4}$")
+        self.assertNotIn("5550000", out.phone)
+        self.assertTrue(out.ai["ok"])
+
+
+class SpeechCheckInTest(unittest.TestCase):
+    """Contact Lens natural-speech path: no keypad slots, CUSTOMER turns from Contact Lens."""
+
+    def setUp(self):
+        self.fake = use_fake_connect(self, max_lines=1)
+        calling.start_outage("A")
+        self.resident = store.get_resident("r-001")
+        self.contact_id = self.resident.contact_id
+
+    def test_speech_segments_are_ranked_with_facts(self):
+        use_fake_bedrock(self, FakeBedrock(GOOD))  # safe/device yes, 1 tank, 2h
+        self.fake.contact_lens.set_turns(self.contact_id, [
+            "I'm okay", "yes it's working", "one tank left", "maybe two hours", "I need a ride"])
+        # No keypad attributes: answered=yes, intent=CheckIn, but no a1..a5.
+        self.fake.attributes[self.contact_id] = {"answered": "yes", "intent": "CheckIn"}
+        self.fake.hung_up.add(self.contact_id)
+        calling.check_calls(force=True)
+
+        done = store.get_resident("r-001")
+        self.assertIn(done.rule_id, ("R1", "R2", "R3"))     # ranked, not a missed call
+        self.assertIsNotNone(done.facts)
+        self.assertTrue(done.ai["ok"])
+        answers = [a.answer for a in done.transcript]
+        self.assertEqual(answers[0], "I'm okay")            # AGENT turn filtered out
+        self.assertEqual(len(answers), 5)
+        self.assertEqual(store.list_checkins("r-001")[0]["transcript"][0]["answer"], "I'm okay")
+
+    def test_segments_collected_during_call_survive_disconnect(self):
+        use_fake_bedrock(self, FakeBedrock(GOOD))
+        self.fake.contact_lens.set_turns(self.contact_id, [
+            "I'm okay", "yes it's working", "one tank left", "maybe two hours", "I need a ride"])
+        calling.check_calls(force=True)  # call still live -> collect segments
+        self.assertIn("I'm okay", store.get_resident("r-001").cl_segments)
+
+        # Segments disappear after disconnect, but we kept them.
+        self.fake.contact_lens.turns[self.contact_id] = []
+        self.fake.attributes[self.contact_id] = {"answered": "yes", "intent": "CheckIn"}
+        self.fake.hung_up.add(self.contact_id)
+        store.transition("r-001", Status.CALLING, {
+            "call_started_at": calling._now() - timedelta(seconds=calling.NO_ANSWER_SECONDS + 1)})
+        calling.check_calls(force=True)
+        done = store.get_resident("r-001")
+        self.assertIn(done.rule_id, ("R1", "R2", "R3"))
+        self.assertEqual(done.transcript[0].answer, "I'm okay")

@@ -102,15 +102,26 @@ class Resident(ResidentIn):
     rule_id: Optional[str] = None
     reason: Optional[str] = None
     hours_left: Optional[float] = None
+    time_to_spare: Optional[float] = Field(
+        default=None, description="hours_left minus drive time, in hours (docs/RANKING.md)")
     runs_out_at: Optional[datetime] = Field(
         default=None, description="When their backup is expected to run out")
+    recheck_at: Optional[datetime] = Field(
+        default=None, description="When to call again (NEEDS_SUPPLIES / OK_FOR_NOW only)")
     drive_minutes: Optional[float] = Field(
         default=None, ge=0, description="Cached shortest hospital-to-resident drive in minutes")
     nearest_hospital_id: Optional[str] = None
     location_cache_key: Optional[str] = None
     location_updated_at: Optional[datetime] = None
     emergency: bool = False
+    facts: Optional[dict] = Field(
+        default=None, description="What Bedrock extracted (understand.Facts as a dict)")
+    ai: Optional[dict] = Field(
+        default=None, description="How Bedrock did: model_id, latency_ms, ok, problems")
     transcript: list[Answer] = Field(default_factory=list)
+    cl_segments: list[str] = Field(
+        default_factory=list,
+        description="Contact Lens CUSTOMER turns collected during the call, in order")
     # The current (or last) phone call
     contact_id: Optional[str] = Field(default=None, description="Amazon Connect ContactId")
     call_started_at: Optional[datetime] = None
