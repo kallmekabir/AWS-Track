@@ -1,4 +1,4 @@
-# CareCall ranking eval
+# CareLine ranking eval
 
 Runs transcripts through the real call path and checks the triage rule against
 `docs/RANKING.md`. Bedrock (`app/understand.extract_facts`) extracts facts; the plain

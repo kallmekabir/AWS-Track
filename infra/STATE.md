@@ -136,7 +136,7 @@ Status: TODO · IN_PROGRESS · DONE · WAITING · BLOCKED · SKIPPED
 - HELD: DynamoDB tables (awaiting team decision). SKIPPED (no IAM roles): all Lambda/Step Functions/API Gateway/EventBridge-target/Knowledge Base tasks; SAM template.yaml not deployed.
 
 ### Hardening phase report (23:05 PDT) — steps 1-9 DONE
-- P1.1-P1.4 Connect: adopted Kabir's instance 4ade3c42, flow "CareCall test call" 40ac3787 (TEST only - must switch to real check-in flow; DRY_RUN stays 1 until confirmed), DID stored as SecureString. CONNECT_* in backend.env + SSM /careline/connect/*.
+- P1.1-P1.4 Connect: adopted Kabir's instance 4ade3c42, flow "CareLine test call" 40ac3787 (TEST only - must switch to real check-in flow; DRY_RUN stays 1 until confirmed), DID stored as SecureString. CONNECT_* in backend.env + SSM /careline/connect/*.
 - Step 2 basic auth: CloudFront Functions careline-auth (default) + careline-auth-strip (/api/*, auth+strip). Verified 401 without / 200 with creds on both / and /api/health. Real credential only in deployed functions; repo keeps placeholder.
 - Step 3 Bedrock: extract model + guardrail id/v2 in backend.env; Converse from the instance returned OK (instance creds work).
 - Step 4 dashboard: web/ built with VITE_API_URL=.../api, deployed to S3+CloudFront; real app loads behind auth; /api/queue + /api/residents polls 200.

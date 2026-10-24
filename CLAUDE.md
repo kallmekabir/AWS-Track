@@ -1,6 +1,6 @@
-# CLAUDE.md — how to work on CareCall
+# CLAUDE.md — how to work on CareLine
 
-CareCall calls people whose medical devices need electricity during a power outage, 4 phones at a time. It turns their answers into facts with Amazon Bedrock, ranks them with simple written rules, and shows the ranked list on one dashboard. Read `README.md` for the full product description.
+CareLine calls people whose medical devices need electricity during a power outage, 4 phones at a time. It turns their answers into facts with Amazon Bedrock, ranks them with simple written rules, and shows the ranked list on one dashboard. Read `README.md` for the full product description.
 
 **Three files to keep open:**
 
@@ -34,7 +34,7 @@ I am learning while we build. I want to understand every piece, not just get wor
 
 We started with a bigger plan called CareLine. We cut it down so a small team can finish it in about 18 hours and so a stressed duty officer can understand it in 5 seconds.
 
-| Before (CareLine plan) | Now (CareCall) | Why we changed |
+| Before (CareLine plan) | Now (CareLine) | Why we changed |
 | --- | --- | --- |
 | English, Spanish and Hindi | English only | Each language is a separate bot setup and set of tests. Not worth it for the demo |
 | Knowledge Bases, Guardrails, Step Functions, EventBridge, CDK | Removed from the MVP | Each adds setup time without changing what the judges see |

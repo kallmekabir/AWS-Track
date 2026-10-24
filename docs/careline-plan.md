@@ -1,4 +1,4 @@
-# CareCall workshop implementation plan
+# CareLine workshop implementation plan
 
 Updated Oct 24, 2026 for the EC2 and Lex slot architecture. This is the active
 implementation plan. The [original CareLine design](reference/careline-plan.original.md)
@@ -6,7 +6,7 @@ is historical; its execution roles, workflows, table schemas and APIs are supers
 
 ## Scope and sources of truth
 
-CareCall helps Jane, a county public-health duty officer, check on residents whose
+CareLine helps Jane, a county public-health duty officer, check on residents whose
 medical devices need electricity. The workshop demo calls four consenting teammates
 at once, collects five fixed answers, and shows transcripts and statuses on one
 priority list and San Jose map. English only.

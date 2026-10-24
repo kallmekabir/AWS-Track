@@ -69,7 +69,7 @@ update does not verify that the current collector is deployed.
 
 ## Pending / TODO for teammates
 
-- **CONNECT_CONTACT_FLOW_ID is Kabir's TEST flow** (`40ac3787...`, "CareCall test call").
+- **CONNECT_CONTACT_FLOW_ID is Kabir's TEST flow** (`40ac3787...`, "CareLine test call").
   Switch it to Kabir's real check-in flow when published, then flip `CONNECT_DRY_RUN=0`
   (only after Himanshu confirms). Update both `/etc/careline/backend.env` and SSM
   `/careline/connect/flow-id`.

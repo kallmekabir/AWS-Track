@@ -1,4 +1,4 @@
-# CareCall dashboard
+# CareLine dashboard
 
 The one screen Jane uses during an outage (CLAUDE.md section 3): the ranked list of who
 to help first, a map of Zone A, and one person's details. It asks the backend for

@@ -24,7 +24,7 @@ reference the Secrets Manager secret name or the API key ID instead.
 | careline-residents | DynamoDB table | careline-residents | /careline/tables/residents | (data) | PK id(S), on-demand, PITR off, DeletionPolicy Delete |
 | careline-checkins | DynamoDB table | careline-checkins | /careline/tables/checkins | (data) | PK resident_id(S), SK at(S), TTL expires_at, on-demand, PITR off, DeletionPolicy Delete |
 | Connect instance (Kabir) | Amazon Connect | 4ade3c42-cea3-4150-a6a5-b6443923e464 (alias carecall-demo-usqljq) | /careline/connect/instance-id, /careline/connect/instance-arn | adopted (P1.1) | Built by teammate; ACTIVE. Not created by infra. |
-| Contact flow "CareCall test call" | Connect flow | 40ac3787-0e55-404b-b11b-df8342ea3b16 | /careline/connect/flow-id | adopted (P1.2) | TEST/hello-world flow only. CONNECT_CONTACT_FLOW_ID must be switched to Kabir's new check-in flow when he publishes it. Keep CONNECT_DRY_RUN=1 until confirmed. |
+| Contact flow "CareLine test call" | Connect flow | 40ac3787-0e55-404b-b11b-df8342ea3b16 | /careline/connect/flow-id | adopted (P1.2) | TEST/hello-world flow only. CONNECT_CONTACT_FLOW_ID must be switched to Kabir's new check-in flow when he publishes it. Keep CONNECT_DRY_RUN=1 until confirmed. |
 | Claimed phone number | Connect DID | phone-number-id bbf9187f-7693-4406-8a37-1ad571aa8edc | /careline/connect/phone-number (SecureString), /careline/connect/phone-number-id | adopted (P1.2) | Value stored only in SecureString SSM + instance backend.env; not printed here |
 
 ## Scripts
