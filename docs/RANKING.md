@@ -39,7 +39,7 @@ Call the first `MAX_LINES` (4) people. Each time a call ends, call the next pers
 
 Fixed wording. The voice only asks; it never gives medical advice.
 
-1. "Hi, this is CareCall from County Public Health, checking on you during the power outage. Are you safe right now?"
+1. "Hi, this is CareCall from County Public Health. If this is an emergency, hang up and call 911. Checking on you during the power outage. Are you safe right now?"
 2. "Is your medical device working right now?"
 3. "How many full backup tanks or batteries do you have?"
 4. "About how many hours can you go before you run out?"
@@ -49,7 +49,7 @@ Closing: "Thank you. Our team has your answers. If anything changes or you feel 
 
 **Emergency words at any point:** "can't breathe" (also "cannot breathe", "can not breathe", "not breathing"), "chest pain", "heart attack", "emergency", "ambulance", "call 911", "nine one one", "help me", "I fell", "I've fallen". Say "Please hang up and call 911 now. I'm alerting our medical team." Then end the call and save the result with `emergency: true` (rule R0, Help now).
 
-These are phrases, not single words. A bare "help" is left out on purpose: question 5 invites answers like "help with groceries", which must not end the call. The list lives in `backend/lambdas/lex_hook.py` (`EMERGENCY_PHRASES`). Change both together.
+These are phrases, not single words. A bare "help" is left out on purpose: question 5 invites answers like "help with groceries", which must not end the call. The script (the 5 questions, the closing) and the phrase list (`EMERGENCY_PHRASES`) live in `backend/app/script.py`; `lambdas/lex_hook.py` imports them from there. Change `app/script.py` and the whole app follows.
 
 ---
 
@@ -85,7 +85,7 @@ Rules for the prompt: never guess. If the person didn't say it, use `null` or `"
 | Name | How | Notes |
 | --- | --- | --- |
 | `hours_left` | From Bedrock. If it's null, use `backup_left × backup_hours_each` (from the registry) when both are known | Otherwise unknown |
-| `drive_minutes` | Shortest drive time from any supplier to the home, from Amazon Location `calculate_route_matrix` | Saved on the resident; unknown if Location fails |
+| `drive_minutes` | Shortest drive time from any supplier to the home, from Amazon Location `calculate_route_matrix` | Saved on the resident; unknown if Location fails. For the demo, drive times come from the registry (`app/seed.py` `DRIVE_MINUTES`); the Amazon Location route matrix is the production source |
 | `time_to_spare` | `hours_left − drive_minutes / 60` | If `drive_minutes` is unknown, use `hours_left` and show "drive time unknown" |
 | `runs_out_at` | `now + hours_left` | Drives the countdown on the dashboard |
 | `recheck_at` | `runs_out_at − 1 hour`, but no sooner than 30 minutes from now and no later than 3 hours from now | Only for "Needs supplies" and "OK for now" |

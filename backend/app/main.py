@@ -10,10 +10,18 @@ from typing import Optional
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 
-from app import calling, store
+from app import calling, checkin, store
 from app.models import (CheckInIn, OutageIn, Resident, ResidentIn, ResidentOut,
                         ResidentPatch)
+
+
+class TranscriptIn(BaseModel):
+    """Typed answers for the demo safety net (POST /residents/{id}/transcript)."""
+    answers: list[str] = Field(default_factory=list, max_length=5,
+                               examples=[["yes", "yes it's on the tank", "one tank left",
+                                          "about two hours", "no"]])
 
 app = FastAPI(title="CareCall API", version="0.2.0")
 
@@ -106,6 +114,17 @@ def reset_demo(zone: Optional[str] = None):
 @app.post("/residents/{resident_id}/checkins", response_model=ResidentOut)
 def add_checkin(resident_id: str, body: CheckInIn):
     return _out(_found(store.record_checkin(resident_id, body)))
+
+
+@app.post("/residents/{resident_id}/transcript", response_model=ResidentOut)
+def typed_transcript(resident_id: str, body: TranscriptIn):
+    """Rank a resident from typed answers (Bedrock + round 2 rules). The demo safety net
+    if a phone call can't be placed. Same path a real call takes in calling.py."""
+    _found(store.get_resident(resident_id))
+    done = checkin.finish_checkin(resident_id, body.answers, source="typed")
+    if done is None:
+        raise HTTPException(status_code=409, detail="Could not save; resident changed or missing")
+    return _out(done)
 
 
 @app.get("/residents/{resident_id}/checkins")

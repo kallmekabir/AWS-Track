@@ -155,3 +155,4 @@ Add a line whenever we decide something, so nobody has to ask twice.
 | Oct 23 | Dashboard is one screen: ranked list, map, one person's details. The CareLine copilot, task, call-log and fairness panels were removed | CLAUDE.md section 3; none had a CareCall endpoint |
 | Oct 23 | Dashboard packages: `maplibre-gl` for the map; Barlow fonts bundled with `@fontsource` | MapLibre draws Amazon Location tiles in the browser (task 14); bundled fonts mean no calls to a font service |
 | Oct 23 | Dashboard mock mode: `VITE_USE_MOCKS=true` in `web/.env.local`, or `?mock` in the address | Rehearse the screen without the backend or phones; `web/src/mock/` answers in the same shapes as `api.ts` |
+| Oct 24 | Calls without Lambda: Lex slots -> contact attributes -> GetContactAttributes after hang-up | Workshop account can't create Lambda roles |
