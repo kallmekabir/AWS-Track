@@ -1,8 +1,7 @@
 """Where residents and call results are kept.
 
 Two backends, same functions:
-- DynamoDB when RESIDENTS_TABLE is set. The api Lambda and the lex_hook Lambda run
-  in separate places, so real calls need this shared storage.
+- DynamoDB when RESIDENTS_TABLE is set, for persistent data on EC2.
 - An in-memory dict otherwise, seeded with the demo roster, for building and
   testing without AWS.
 """
@@ -190,7 +189,7 @@ def transition(resident_id: str, from_status: Status, changes: dict,
     """Apply `changes` only if the resident is still in `from_status` (and still on
     `contact_id`, when given). Returns None if someone else got there first.
 
-    This is what stops two Lambdas from both handling the end of the same call. The
+    This stops concurrent checkers from both handling the end of the same call. The
     write only lands if nobody changed the resident since we read it; if someone did,
     we read again and re-check, so no one's update is silently lost.
     """

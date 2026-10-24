@@ -15,6 +15,8 @@ class FakeConnect:
     def __init__(self, fail_for: tuple = ()):
         self.started: list[dict] = []
         self.hung_up: set[str] = set()
+        self.attributes: dict[str, dict] = {}
+        self.attribute_requests: list[dict] = []
         self.fail_for = fail_for  # destination numbers that Connect rejects
 
     def start_outbound_voice_contact(self, **params):
@@ -32,6 +34,10 @@ class FakeConnect:
 
     def called_ids(self) -> list[str]:
         return [p["Attributes"]["residentId"] for p in self.started]
+
+    def get_contact_attributes(self, **params):
+        self.attribute_requests.append(params)
+        return {"Attributes": self.attributes.get(params["InitialContactId"], {})}
 
 
 def team_roster():

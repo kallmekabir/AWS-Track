@@ -13,7 +13,7 @@ class TransitionTest(unittest.TestCase):
         calling.start_outage("A")
 
     def test_concurrent_update_is_not_lost(self):
-        """Another Lambda saves an answer between our read and our write: both changes survive."""
+        """Another worker saves an answer between our read and our write: both changes survive."""
         backend = store._backend
         real_get = backend.get
         raced = []

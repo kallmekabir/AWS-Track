@@ -2,7 +2,7 @@
 
 Connect places a real phone call from one API call (StartOutboundVoiceContact) and
 runs our contact flow, which hands the caller to the Lex bot. We pass residentId as a
-contact attribute so lex_hook knows who is on the line.
+contact attribute and retrieve the answers from Connect once the call ends.
 
 Safety: a call starts only if the resident has allow_call=True AND their number is a
 teammate's number from Parameter Store (app/phones.py) or on DIALER_ALLOW_LIST. With
@@ -11,10 +11,12 @@ neither set, no real call ever goes out.
 CONNECT_DRY_RUN=1 skips Connect and returns fake contact IDs, so the dashboard can be
 built without ringing anyone.
 """
+import logging
 import os
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
 
@@ -22,14 +24,14 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
-from app import phones, store
+from app import call_results, phones, store
 from app.models import Resident, Status
 from app.ranking import round1_order
 
 MAX_LINES = int(os.getenv("MAX_LINES", "4"))
-NO_ANSWER_SECONDS = int(os.getenv("NO_ANSWER_SECONDS", "120"))
+NO_ANSWER_SECONDS = int(os.getenv("NO_ANSWER_SECONDS", "300"))
 MAX_MISSED_CALLS = 2               # docs/RANKING.md, rule NA
-CHECK_EVERY_SECONDS = 5            # check_calls runs on dashboard polls; this keeps it cheap
+CHECK_EVERY_SECONDS = 5            # background checks and dashboard polls share this interval
 
 DRY_RUN = os.getenv("CONNECT_DRY_RUN", "").lower() in ("1", "true", "yes")
 INSTANCE_ID = os.getenv("CONNECT_INSTANCE_ID", "")
@@ -199,59 +201,50 @@ def start_outage(zone: str) -> dict:
     return dial_wave(zone)
 
 
-# ---- Finding calls that ended without all 5 answers ----
+# ---- Collecting results after calls end ----
 
 _last_check = 0.0
+_check_lock = threading.Lock()
+_log = logging.getLogger(__name__)
 
 
 def _call_ended(resident: Resident) -> bool:
-    last = resident.last_activity_at or resident.call_started_at
-    if last and _now() - last > timedelta(seconds=NO_ANSWER_SECONDS):
-        return True  # backstop: nothing heard for too long
-    if DRY_RUN or not resident.contact_id:
+    if not resident.contact_id:
         return False
+    elapsed = (_now() - resident.call_started_at).total_seconds() if resident.call_started_at else 0
+    if DRY_RUN:
+        return elapsed >= CHECK_EVERY_SECONDS
     try:
         contact = _connect().describe_contact(
             InstanceId=INSTANCE_ID, ContactId=resident.contact_id)["Contact"]
-    except ClientError:
-        return False  # can't tell right now; the timer above still catches it
-    return "DisconnectTimestamp" in contact
-
-
-def _close_unfinished_call(resident: Resident) -> bool:
-    """The call ended before question 5. Record a missed call or a cut-off call."""
-    answered = len(resident.transcript)
-    if answered:
-        changes = {"status": Status.PERSON_CHECK, "rule_id": None,
-                   "reason": f"Call ended after question {answered} of 5"}
-    else:
-        missed = resident.missed_calls + 1
-        if missed >= MAX_MISSED_CALLS:
-            changes = {"status": Status.HELP_SOON, "rule_id": "NA",
-                       "reason": f"No answer ({missed} tries). Send a welfare check"}
-        else:
-            changes = {"status": Status.NOT_CALLED, "rule_id": None,
-                       "reason": f"No answer ({missed} try). Calling again"}
-        changes["missed_calls"] = missed
-    changes["current_question"] = 0
-    done = store.transition(resident.id, Status.CALLING, changes, contact_id=resident.contact_id)
-    if done and answered:
-        store.add_checkin(resident.id, {
-            "source": "call", "status": done.status.value, "reason": done.reason,
-            "transcript": [a.model_dump() for a in done.transcript]})
-    return done is not None
+        if contact.get("DisconnectTimestamp") is not None:
+            return True
+    except _CALL_ERRORS:
+        pass  # a later check retries; the start-time backstop still applies
+    return elapsed > NO_ANSWER_SECONDS
 
 
 def check_calls(force: bool = False) -> None:
-    """Close calls that ended early, then refill the free lines.
+    """Collect ended calls and refill lines, even when the dashboard is closed.
 
-    Runs when the dashboard polls (every 3 s), at most every CHECK_EVERY_SECONDS.
+    Background and HTTP threads may enter together. Only one checker runs at a
+    time; the store's contact guard also protects against duplicate/stale results.
     """
     global _last_check
-    if not force and time.monotonic() - _last_check < CHECK_EVERY_SECONDS:
+    if not _check_lock.acquire(blocking=False):
         return
-    _last_check = time.monotonic()
-    zones = {r.zone for r in store.list_residents()
-             if r.status == Status.CALLING and _call_ended(r) and _close_unfinished_call(r)}
-    for zone in zones:
-        dial_next(zone)
+    try:
+        if not force and time.monotonic() - _last_check < CHECK_EVERY_SECONDS:
+            return
+        _last_check = time.monotonic()
+        for resident in store.list_residents():
+            if resident.status != Status.CALLING or not _call_ended(resident):
+                continue
+            try:
+                call_results.finish_call(resident)
+            except _CALL_ERRORS:
+                # Keep checking other contacts. Failed attribute reads leave this
+                # resident CALLING, so the next background/poll check retries.
+                _log.exception("Could not collect call or refill lines for %s", resident.id)
+    finally:
+        _check_lock.release()
