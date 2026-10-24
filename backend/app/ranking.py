@@ -20,6 +20,13 @@ def device_group_for(device: str) -> int:
     return 3
 
 
+def round1_key(r) -> tuple:
+    """Round 1 calling order key: device group, then fewest backups on file (unknown
+    counts as 0), then id. Reused by store.queue() so not-yet-called residents show in
+    the order they'll be called."""
+    return (r.device_group or 3, r.backups_on_file or 0, r.id)
+
+
 def round1_order(residents: list) -> list:
     """Calling order: device group, then fewest backups on file (unknown counts as 0), then id."""
-    return sorted(residents, key=lambda r: (r.device_group or 3, r.backups_on_file or 0, r.id))
+    return sorted(residents, key=round1_key)
