@@ -1,4 +1,4 @@
-# CareCall workshop infrastructure runbook
+# CareLine workshop infrastructure runbook
 
 Updated Oct 24, 2026. Use the existing EC2/CloudFront hosting and two-table
 contract. The [original serverless runbook](../docs/reference/infra-runbook.original.md)

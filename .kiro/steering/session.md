@@ -2,7 +2,7 @@
 inclusion: always
 ---
 
-# Session context (CareCall, AWS hackathon, video due 10:30 AM Sat)
+# Session context (CareLine, AWS hackathon, video due 10:30 AM Sat)
 
 Account limits: the workshop role cannot create IAM roles. Never propose Lambda, Step
 Functions, API Gateway-to-Lambda, EventBridge targets, Knowledge Bases, CDK bootstrap,

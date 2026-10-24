@@ -1,4 +1,4 @@
-# CareCall: what's done and what's next
+# CareLine: what's done and what's next
 
 Claude: read this at the start of every session. Work on the first unchecked task unless I say otherwise, and check tasks off as they finish. Each phase lists questions to ask me before you start it (see `CLAUDE.md`, section 1).
 
@@ -65,7 +65,7 @@ Docs: [StartOutboundVoiceContact](https://docs.aws.amazon.com/connect/latest/API
 
 **Status (Oct 24):** outbound calls already succeed. No-hook completion is tested offline. Remaining AWS work is in **`connect/SETUP.md`**: console verification of Lex slots, contact attribute copying, EC2/CloudFront hosting and real-phone acceptance. Five FreeFormInput slots cannot populate A1 from the intent-triggering reply under documented Lex behavior; the repeated-question fallback needs console verification. Check phone tasks off only when a real phone proves them.
 
-- [ ] **1. One phone rings.** Create a Connect instance in our one region and turn on outbound calling. Claim a US direct-dial number (not toll-free) and set it as the outbound caller ID on the queue. Build a flow that says "Hello from CareCall", then call your own phone from the AWS CLI.
+- [ ] **1. One phone rings.** Create a Connect instance in our one region and turn on outbound calling. Claim a US direct-dial number (not toll-free) and set it as the outbound caller ID on the queue. Build a flow that says "Hello from CareLine", then call your own phone from the AWS CLI.
   - *Done when:* your phone rings and says hello. Put the instance, flow and queue IDs in `backend/.env`.
   - *Status:* console work. `connect/SETUP.md` steps 1–5 build the real check-in flow directly; the claimed number goes in `CONNECT_SOURCE_NUMBER`, so no queue setup is needed. Test with `POST /residents/r-001/call` instead of the CLI.
 - [ ] **2. Teammates as residents.** Add the 4 teammates (with their OK) with `allow_call: true`. Keep their real numbers in a git-ignored file such as `backend/seed.local.json`, never in git.
@@ -174,7 +174,7 @@ Add a line whenever we decide something, so nobody has to ask twice.
 | Oct 23 | Teammates play the personas Daniel, Ruth, Maria, Linh | The dashboard then matches the worked example in `docs/RANKING.md` |
 | Oct 23 | Emergency detection uses phrases, not the bare word "help" | Question 5 invites "help with groceries" |
 | Oct 23 | `StartOutboundVoiceContact` IAM permission uses `Resource: "*"` | The action has no resource-level permissions (AWS service reference); `DescribeContact` is scoped to our instance |
-| Oct 23 | Dashboard is one screen: ranked list, map, one person's details. The CareLine copilot, task, call-log and fairness panels were removed | CLAUDE.md section 3; none had a CareCall endpoint |
+| Oct 23 | Dashboard is one screen: ranked list, map, one person's details. The CareLine copilot, task, call-log and fairness panels were removed | CLAUDE.md section 3; none had a CareLine endpoint |
 | Oct 23 | Dashboard packages: `maplibre-gl` for the map; Barlow fonts bundled with `@fontsource` | MapLibre draws Amazon Location tiles in the browser (task 14); bundled fonts mean no calls to a font service |
 | Oct 23 | Dashboard mock mode: `VITE_USE_MOCKS=true` in `web/.env.local`, or `?mock` in the address | Rehearse the screen without the backend or phones; `web/src/mock/` answers in the same shapes as `api.ts` |
 | Oct 24 | Lex CheckIn slots + Connect contact attributes replace the code hook; Phase 2 goes in extract_facts | No execution role required; FreeFormInput entry/interrupt limitations are recorded in SETUP.md |

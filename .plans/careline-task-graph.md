@@ -1,4 +1,4 @@
-# CareCall workshop task graph
+# CareLine workshop task graph
 
 Updated Oct 24, 2026. This graph follows the current
 [implementation plan](../docs/careline-plan.md) and

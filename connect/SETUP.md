@@ -1,4 +1,4 @@
-# CareCall: Connect, Lex slots and EC2 setup
+# CareLine: Connect, Lex slots and EC2 setup
 
 **Why no Lambda:** the workshop account denies IAM role creation. `PassRole` is
 limited to `WSParticipantRole`, which trusts no AWS service. Connect uses its
@@ -183,7 +183,7 @@ Console acceptance record (pending a human console session):
 1. AWS Connect console → instance → **Flows → Amazon Lex** → add
    **CareCallCheckIn**, region us-east-1, alias **live**.
 2. Connect admin website → **Routing → Flows → Create flow**.
-   Name **CareCall outbound check-in**. Use these blocks:
+   Name **CareLine outbound check-in**. Use these blocks:
 
    | Order | Block | Settings / next step |
    | --- | --- | --- |
@@ -200,7 +200,7 @@ Console acceptance record (pending a human console session):
    **Get customer input TTS**, exactly `script.QUESTIONS[1]`:
 
    ```text
-   Hi, this is CareCall from County Public Health, checking on you during the power outage. Are you safe right now?
+   Hi, this is CareLine from County Public Health, checking on you during the power outage. Are you safe right now?
    ```
 
    Add intent exits **CheckIn**, **Emergency**, and **FallbackIntent** to the
@@ -347,7 +347,7 @@ closing line, and disconnects. A no-match or timeout stores `no answer` for that
 and continues; the flow never hangs up early. The backend is unchanged:
 `app/call_results.py` already reads `a1..a5`/`answered`/`intent`.
 
-Flow name `CareCall check-in keypad`, tagged `Project=careline`. Point
+Flow name `CareLine check-in keypad`, tagged `Project=careline`. Point
 `CONNECT_CONTACT_FLOW_ID` at its ID.
 
 For the video: "Callers answer by keypad today; voice answers through Lex are the next

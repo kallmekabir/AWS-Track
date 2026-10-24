@@ -1,6 +1,6 @@
-# Product: CareCall
+# Product: CareLine
 
-CareCall helps Jane, a county public-health duty officer, check on residents who
+CareLine helps Jane, a county public-health duty officer, check on residents who
 depend on powered medical equipment during a power outage, before their backup
 supplies run out. The workshop scope is four simultaneous calls, five fixed
 questions in English, and one priority list/map/drawer dashboard.

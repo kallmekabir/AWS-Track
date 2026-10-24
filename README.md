@@ -1,8 +1,8 @@
-# CareCall
+# CareLine
 
-**When the power goes out, CareCall phones the people who can't wait.**
+**When the power goes out, CareLine phones the people who can't wait.**
 
-CareCall is an AWS voice agent that calls residents who depend on powered medical
+CareLine is an AWS voice agent that calls residents who depend on powered medical
 equipment during an outage, turns what they say into facts with **Amazon Bedrock**, and
 ranks them with plain written rules so a duty officer sees **who runs out first**. Four
 phones ring at once; the answers land on one screen, highest risk on top, each with the
@@ -16,7 +16,7 @@ Sparthill hackathon, October 2026. English only.
 ## What it does (for judges)
 
 1. **Jane, the duty officer, starts an outage** for a zone (one button).
-2. **CareCall phones up to 4 residents at once** through Amazon Connect, highest medical
+2. **CareLine phones up to 4 residents at once** through Amazon Connect, highest medical
    risk first.
 3. **Residents answer 5 short questions** — are you safe, is the device working, how many
    backups, how many hours left, what else do you need. Answers come in by **keypad**

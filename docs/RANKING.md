@@ -1,8 +1,8 @@
-# CareCall ranking rules
+# CareLine ranking rules
 
-This file is the single source of truth for how CareCall orders people. `app/ranking.py`, `app/rules.py` and the planned `eval/run.py` must match it. If a rule changes, change this file in the same step.
+This file is the single source of truth for how CareLine orders people. `app/ranking.py`, `app/rules.py` and the planned `eval/run.py` must match it. If a rule changes, change this file in the same step.
 
-CareCall ranks twice:
+CareLine ranks twice:
 
 1. **Round 1, before the calls:** who do we call first?
 2. **Round 2, after each call:** who do we help first?
@@ -39,7 +39,7 @@ Call the first `MAX_LINES` (4) people. Each time a call ends, call the next pers
 
 Fixed wording. The voice only asks; it never gives medical advice.
 
-1. "Hi, this is CareCall from County Public Health, checking on you during the power outage. Are you safe right now?"
+1. "Hi, this is CareLine from County Public Health, checking on you during the power outage. Are you safe right now?"
 2. "Is your medical device working right now?"
 3. "How many full backup tanks or batteries do you have?"
 4. "About how many hours can you go before you run out?"
