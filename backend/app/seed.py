@@ -1,8 +1,17 @@
-"""The demo roster: made-up residents, plus teammates' real phones.
+"""Write residents to the store (DynamoDB when RESIDENTS_TABLE is set in backend/.env).
 
-The roster matches the worked example in docs/RANKING.md. Teammates play the four
-group 1 personas (Daniel, Ruth, Maria, Linh). Each teammate stores their own number,
-with their OK, in Parameter Store (see app/phones.py):
+Two sources; pick one. Run from backend/:
+
+    python -m app.seed --demo     # the 8-person ROSTER below; teammates' phones can ring
+    python -m app.seed            # data/Residents_simple.csv (or RESIDENTS_CSV); nobody callable
+    python -m app.seed --csv /path/to/residents.csv
+
+Add --dry-run to validate without writing, or --with-location to calculate hospital
+drive times first (needs LOCATION_ENABLED=1).
+
+--demo: the roster matches the worked example in docs/RANKING.md. Teammates play the
+four group 1 personas (Daniel, Ruth, Maria, Linh). Each teammate stores their own
+number, with their OK, in Parameter Store (see app/phones.py):
 
     /carecall/phones/daniel-kim     +14085551234      (SecureString)
 
@@ -12,15 +21,11 @@ Fallback for offline work: backend/seed.local.json, which git ignores:
 
 Each number gives that persona the phone and allow_call=True.
 
-Seed data/Residents_simple.csv into the store (DynamoDB when RESIDENTS_TABLE
-is set in backend/.env). Run these commands from backend/:
+CSV: allow_call and phones are used exactly as written; Parameter Store is never read.
+Rows are validated before any writes, and CSV ids are preserved.
 
-    python -m app.seed
-    python -m app.seed --csv /path/to/residents.csv --dry-run
-    python -m app.seed --demo
-
-RESIDENTS_CSV can also select the CSV path. CSV ids are preserved on re-runs;
-matching residents are replaced, including their live outage state.
+Both sources use ids from r-001, and matching residents are replaced, including their
+live outage state.
 """
 import argparse
 import csv
@@ -144,6 +149,10 @@ def load_csv_residents(path: Path) -> list[Resident]:
                 resident = Resident.model_validate(data)
             except ValidationError as exc:
                 # Report fields and reasons without echoing phone numbers or row data.
+                if any(error["loc"] in (("lat",), ("lng",)) and error["type"] in
+                       {"less_than_equal", "greater_than_equal", "finite_number"}
+                       for error in exc.errors(include_input=False)):
+                    raise ValueError(f"{location}: latitude or longitude is out of range") from None
                 details = "; ".join(
                     f"{'.'.join(map(str, error['loc']))}: {error['msg']}"
                     for error in exc.errors(include_input=False)
@@ -171,6 +180,7 @@ def main(argv: list[str] | None = None) -> int:
     source.add_argument("--csv", type=Path, help="Resident CSV (default: RESIDENTS_CSV or data/Residents_simple.csv)")
     source.add_argument("--demo", action="store_true", help="Seed the original demo roster instead")
     parser.add_argument("--dry-run", action="store_true", help="Validate and count residents without writing")
+    parser.add_argument("--with-location", action="store_true", help="Calculate hospital drives before writing (requires LOCATION_ENABLED=1)")
     args = parser.parse_args(argv)
 
     try:
@@ -182,6 +192,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         print(f"Validated {len(residents)} residents; no data written.")
         return 0
+
+    if args.with_location:
+        from app import location
+        from botocore.exceptions import BotoCoreError, ClientError
+        # Calculate the entire batch before writing any residents.
+        try:
+            residents = [r.model_copy(update=fields) for r, fields in
+                         zip(residents, location.drive_times(residents))]
+        except (location.LocationError, BotoCoreError, ClientError):
+            print("Error: hospital drive calculation failed; no residents written. "
+                  "Check LOCATION_ENABLED, HOSPITALS_CSV and backend AWS access.", file=sys.stderr)
+            return 1
 
     from app import store  # imported after validation and .env loading
 

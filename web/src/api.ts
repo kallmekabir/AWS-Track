@@ -24,6 +24,14 @@ export interface Answer {
   answer: string
 }
 
+export interface Hospital {
+  id: string
+  name: string
+  address: string
+  lat: number
+  lng: number
+}
+
 // Mirrors ResidentOut in backend/app/models.py. The phone arrives masked.
 export interface Resident {
   id: string
@@ -44,6 +52,8 @@ export interface Resident {
   hours_left: number | null
   runs_out_at: string | null
   drive_minutes: number | null
+  nearest_hospital_id: string | null
+  location_updated_at: string | null
   emergency: boolean
   transcript: Answer[]
   contact_id: string | null
@@ -90,6 +100,7 @@ export const getQueue = (zone = 'A') =>
 export const getResidents = (zone = 'A') =>
   MOCK ? mock.getResidents(zone) : request<Resident[]>(`/residents${zoneQuery(zone)}`)
 export const getResident = (id: string) => (MOCK ? mock.getResident(id) : request<Resident>(`/residents/${id}`))
+export const getHospitals = () => MOCK ? mock.getHospitals() : request<Hospital[]>('/hospitals')
 
 // POST / PATCH requests: change data
 export const startOutage = (zone = 'A') =>

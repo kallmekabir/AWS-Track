@@ -2,7 +2,7 @@
 // how long their backup lasts, what they said on the call, and Call again. It reads
 // the same /queue poll as the list, so it updates while a call is going.
 import { useEffect, useRef } from 'react'
-import type { Resident } from '../api'
+import type { Hospital, Resident } from '../api'
 import { levelToken } from '../map/colors'
 import { callProgress, canCallAgain, DEVICE_GROUP_TEXT, deviceLine, RULE_TEXT } from '../lib/levels'
 import { minutesLeft } from '../lib/runway'
@@ -12,6 +12,7 @@ import './ResidentDrawer.css'
 
 interface Props {
   resident: Resident
+  hospitals: Hospital[]
   place: number
   now: number
   onClose: () => void
@@ -20,7 +21,7 @@ interface Props {
 
 const SCALE_MIN = 360
 
-export function ResidentDrawer({ resident: r, place, now, onClose, onCallAgain }: Props) {
+export function ResidentDrawer({ resident: r, hospitals, place, now, onClose, onCallAgain }: Props) {
   const ref = useRef<HTMLElement>(null)
   const progress = callProgress(r)
 
@@ -63,7 +64,7 @@ export function ResidentDrawer({ resident: r, place, now, onClose, onCallAgain }
           )}
         </section>
 
-        <Backup resident={r} now={now} />
+        <Backup resident={r} hospitals={hospitals} now={now} />
 
         <section className="dr-section">
           <h3 className="dr-h">What they said</h3>
@@ -119,7 +120,7 @@ export function ResidentDrawer({ resident: r, place, now, onClose, onCallAgain }
   )
 }
 
-function Backup({ resident: r, now }: { resident: Resident; now: number }) {
+function Backup({ resident: r, hospitals, now }: { resident: Resident; hospitals: Hospital[]; now: number }) {
   const left = minutesLeft(r, now)
   const pct = (m: number) => `${(Math.min(Math.max(m, 0), SCALE_MIN) / SCALE_MIN) * 100}%`
   return (
@@ -153,9 +154,18 @@ function Backup({ resident: r, now }: { resident: Resident; now: number }) {
           <dd className="num">{r.hours_left === null ? 'unknown' : `${r.hours_left} h`}</dd>
         </div>
         <div>
-          <dt>Drive from nearest supplier</dt>
+          <dt>Drive from nearest hospital</dt>
           <dd className="num">{r.drive_minutes === null ? 'unknown' : `${Math.round(r.drive_minutes)} min`}</dd>
         </div>
+        {r.nearest_hospital_id && (
+          <div>
+            <dt>Hospital</dt>
+            <dd>{hospitals.find((h) => h.id === r.nearest_hospital_id)?.name ?? r.nearest_hospital_id}</dd>
+          </div>
+        )}
+        {r.location_updated_at && (
+          <div><dt>Drive calculated</dt><dd>{clock(r.location_updated_at)}</dd></div>
+        )}
       </dl>
     </section>
   )

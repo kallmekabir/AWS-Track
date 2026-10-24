@@ -8,7 +8,8 @@
 //
 //   ?mock        mock mode, nobody called yet
 //   ?mock=30     mock mode, Start outage was pressed 30 seconds ago
-import type { Answer, OutageResult, Resident, Status } from '../api'
+import type { Answer, Hospital, OutageResult, Resident, Status } from '../api'
+import hospitalCsv from '../../../data/Hospital_clean.csv?raw'
 import { clock } from '../lib/time'
 import { QUESTIONS, ROSTER, type MockPerson } from './roster'
 
@@ -100,6 +101,8 @@ function residentAt(p: MockPerson, t: number): Resident {
     hours_left: null,
     runs_out_at: null,
     drive_minutes: p.drive_minutes,
+    nearest_hospital_id: null,
+    location_updated_at: null,
     emergency: false,
     transcript: [],
     contact_id: null,
@@ -188,6 +191,16 @@ const preset = new URLSearchParams(window.location.search).get('mock')
 if (preset && Number(preset) > 0) start(Number(preset))
 
 // ---- the same functions api.ts exports ----
+
+export async function getHospitals(): Promise<Hospital[]> {
+  // Use the supplied CSV in offline rehearsals too, keeping one source of data.
+  return hospitalCsv.trim().split(/\r?\n/).slice(1).map((line) => {
+    const match = line.match(/^([^,]+),([^,]+),"([^"]+)",([^,]+),([^,]+)$/)
+    if (!match) throw new Error('Invalid hospital CSV row')
+    const [, id, name, address, lat, lng] = match
+    return { id, name, address, lat: Number(lat), lng: Number(lng) }
+  })
+}
 
 export async function getQueue(_zone = 'A'): Promise<Resident[]> {
   await sleep(80)

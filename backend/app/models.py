@@ -49,8 +49,8 @@ class ResidentIn(BaseModel):
     phone: str = Field(pattern=r"^\+1\d{10}$", examples=["+14085550101"],
                        description="US number in E.164 format")
     address: str = Field(examples=["412 Elm St, San Jose, CA"])
-    lat: float = Field(examples=[37.335])
-    lng: float = Field(examples=[-121.893])
+    lat: Optional[float] = Field(default=None, ge=-90, le=90, examples=[37.335])
+    lng: Optional[float] = Field(default=None, ge=-180, le=180, examples=[-121.893])
     zone: str = Field(default="A", examples=["A"])
     device: str = Field(examples=["Oxygen concentrator"])
     device_group: Optional[int] = Field(
@@ -66,6 +66,8 @@ class ResidentIn(BaseModel):
 
     @model_validator(mode="after")
     def _fill_device_group(self):
+        if (self.lat is None) != (self.lng is None):
+            raise ValueError("Provide both lat and lng, or omit both to geocode the address")
         if self.device_group is None:
             self.device_group = device_group_for(self.device)
         return self
@@ -76,8 +78,8 @@ class ResidentPatch(BaseModel):
     name: Optional[str] = None
     phone: Optional[str] = Field(default=None, pattern=r"^\+1\d{10}$")
     address: Optional[str] = None
-    lat: Optional[float] = None
-    lng: Optional[float] = None
+    lat: Optional[float] = Field(default=None, ge=-90, le=90)
+    lng: Optional[float] = Field(default=None, ge=-180, le=180)
     zone: Optional[str] = None
     device: Optional[str] = None
     device_group: Optional[int] = Field(default=None, ge=1, le=3)
@@ -88,6 +90,8 @@ class ResidentPatch(BaseModel):
 
 class Resident(ResidentIn):
     """A stored resident: the registry fields plus live outage state."""
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
     id: str
     status: Status = Status.NOT_CALLED
     rule_id: Optional[str] = None
@@ -96,7 +100,10 @@ class Resident(ResidentIn):
     runs_out_at: Optional[datetime] = Field(
         default=None, description="When their backup is expected to run out")
     drive_minutes: Optional[float] = Field(
-        default=None, description="Drive time from the nearest supplier (Phase 2)")
+        default=None, ge=0, description="Cached shortest hospital-to-resident drive in minutes")
+    nearest_hospital_id: Optional[str] = None
+    location_cache_key: Optional[str] = None
+    location_updated_at: Optional[datetime] = None
     emergency: bool = False
     transcript: list[Answer] = Field(default_factory=list)
     # The current (or last) phone call
@@ -139,3 +146,12 @@ class CheckInIn(BaseModel):
 class OutageIn(BaseModel):
     """Start an outage for one zone (POST /outages)."""
     zone: str = Field(examples=["A"])
+
+
+class Hospital(BaseModel):
+    """A route origin from Hospital_clean.csv; no supply availability is inferred."""
+    id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    address: str = Field(min_length=1)
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)

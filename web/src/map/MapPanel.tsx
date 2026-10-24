@@ -7,12 +7,12 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 // MapLibre 6 loads its worker from a file next to its own module; Vite's dep
 // pre-bundling moves that module, so point it at the worker explicitly.
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
-import type { Resident } from '../api'
+import type { Hospital, Resident } from '../api'
 import { config } from '../config'
 import { LEVEL_LABEL, LEVEL_ORDER } from '../lib/levels'
 import { useSelection } from '../state/selection'
 import { Glyph } from '../ui/Glyph'
-import { addLayers, residentFeatures, residentsSource } from './layers'
+import { addLayers, hospitalFeatures, residentFeatures, residentsSource } from './layers'
 import { drawImage } from './pins'
 import './MapPanel.css'
 
@@ -22,6 +22,8 @@ const SAN_JOSE: [number, number] = [-121.8863, 37.3382]
 
 interface Props {
   rows: Resident[]
+  hospitals: Hospital[]
+  hospitalError: boolean
   drawerOpen: boolean
   onUnavailable: () => void
 }
@@ -31,7 +33,7 @@ function styleUrl() {
   return `https://maps.geo.${awsRegion}.amazonaws.com/v2/styles/${mapStyle}/descriptor?key=${encodeURIComponent(locationApiKey)}&color-scheme=Light`
 }
 
-export function MapPanel({ rows, drawerOpen, onUnavailable }: Props) {
+export function MapPanel({ rows, hospitals, hospitalError, drawerOpen, onUnavailable }: Props) {
   const { selectedId, select } = useSelection()
   const panelRef = useRef<HTMLElement>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
@@ -82,6 +84,15 @@ export function MapPanel({ rows, drawerOpen, onUnavailable }: Props) {
     })
     map.on('mouseenter', 'residents', () => (map.getCanvas().style.cursor = 'pointer'))
     map.on('mouseleave', 'residents', () => (map.getCanvas().style.cursor = ''))
+    map.on('click', 'hospitals', (e) => {
+      const feature = e.features?.[0]
+      if (!feature || feature.geometry.type !== 'Point') return
+      const text = document.createElement('div')
+      text.textContent = `${feature.properties?.name} · ${feature.properties?.address}`
+      new maplibregl.Popup().setLngLat(feature.geometry.coordinates as [number, number]).setDOMContent(text).addTo(map)
+    })
+    map.on('mouseenter', 'hospitals', () => (map.getCanvas().style.cursor = 'pointer'))
+    map.on('mouseleave', 'hospitals', () => (map.getCanvas().style.cursor = ''))
     mapRef.current = map
     return () => {
       map.remove()
@@ -100,14 +111,21 @@ export function MapPanel({ rows, drawerOpen, onUnavailable }: Props) {
     residentsSource(mapRef.current!).setData(fc)
   }, [ready, rows, selectedId])
 
+  useEffect(() => {
+    if (!ready) return
+    const source = mapRef.current!.getSource('hospitals') as maplibregl.GeoJSONSource
+    source.setData(hospitalFeatures(hospitals))
+  }, [ready, hospitals])
+
   // Fit to the zone once, when the residents first arrive.
   useEffect(() => {
-    if (!ready || fitted.current || !rows.length) return
+    if (!ready || fitted.current || !rows.length || (!hospitals.length && !hospitalError)) return
     fitted.current = true
     const bounds = new maplibregl.LngLatBounds()
     rows.forEach((r) => bounds.extend([r.lng, r.lat]))
+    hospitals.forEach((h) => bounds.extend([h.lng, h.lat]))
     mapRef.current!.fitBounds(bounds, { padding: 80, maxZoom: 15, duration: 0 })
-  }, [ready, rows])
+  }, [ready, rows, hospitals, hospitalError])
 
   useLayoutEffect(() => {
     const update = () => setDrawerInset(drawerOpen ? measureInset() : 0)
@@ -131,7 +149,7 @@ export function MapPanel({ rows, drawerOpen, onUnavailable }: Props) {
   }, [ready, selectedLngLat])
 
   return (
-    <section className="panel map-panel" ref={panelRef} aria-label="Map of residents">
+    <section className="panel map-panel" ref={panelRef} aria-label="Map of residents and hospitals">
       <div className="map-canvas" ref={canvasRef} />
 
       {/* With the details open, the strip of map left is too narrow; the details name the level in words. */}
@@ -144,11 +162,12 @@ export function MapPanel({ rows, drawerOpen, onUnavailable }: Props) {
             </span>
           ))}
           <span className="lg-note">Numbers are places in line</span>
+          <span className="lg-item"><span style={{ color: '#286791' }} aria-hidden="true">●</span> Hospitals</span>
         </div>
       )}
 
       <span className="map-badge" style={{ right: drawerInset + 12 }}>
-        Made-up residents
+        {hospitalError ? 'Hospital locations unavailable' : `Made-up residents · ${hospitals.length} hospitals`}
       </span>
     </section>
   )
