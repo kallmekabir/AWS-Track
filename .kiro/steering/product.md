@@ -18,3 +18,10 @@ Non-negotiable rules for all code in this repo:
 - No diagnoses, medication names or raw transcripts are stored. Redacted transcripts
   expire after 24 hours.
 - All resident data is synthetic. The dialer only calls numbers on the demo allow-list.
+- Priority order is computed by `priority_key()` in `lambdas/shared/careline_shared/priority.py`,
+  never by the model. The copilot keeps the order its tools return. Drive time only breaks
+  ties and never changes triage.
+- Drive times and hospital names are logistics information for the operator. Residents
+  never hear a hospital name, and the copilot never recommends where to receive care.
+- Resident coordinates are never sent to Bedrock. The real residents CSV stays in the
+  gitignored `data/private/`.

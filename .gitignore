@@ -19,6 +19,9 @@ cdk.context.json
 !.env.example
 .kiro/settings/mcp.json
 
+# Real demo residents (teammates' phones); commit only data/residents.sample.csv
+data/private/
+
 # Eval artifacts that change every run (commit the final report on purpose)
 eval/runs/
 

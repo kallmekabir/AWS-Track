@@ -6,7 +6,7 @@ Oct 23, 2026 · @Himanshu Jain
 
 CareLine helps Jane Doe, a county public-health duty officer, check on every resident who depends on powered medical equipment before their backup batteries run out. It is built on AWS with Amazon Bedrock at its core and developed in Kiro, for the track "AI-Driven Automation & Critical Service Continuity." The deliverable is a 5-minute video, due **10:30 AM Saturday, Oct 24**.
 
-**Persona: Jane Doe.** Jane is the duty officer for a county public-health department during a planned utility power shutoff. She has 3 staff and about 400 residents on oxygen concentrators, ventilators or home dialysis, and only hours before their backup batteries run out. Today she works from a spreadsheet and a phone. Every hour her team spends dialing is an hour in which someone's battery runs down without anyone knowing.
+**Persona: Jane Doe.** Jane is the duty officer for the Santa Clara County public-health department (San Jose, CA) during a planned utility power shutoff. She has 3 staff and about 400 residents on oxygen concentrators, ventilators or home dialysis, and only hours before their backup batteries run out. Today she works from a spreadsheet and a phone. Every hour her team spends dialing is an hour in which someone's battery runs down without anyone knowing.
 
 **Why it matters.** More than 3 million Medicare beneficiaries depend on electricity-powered medical equipment ([HHS emPOWER](https://empowerprogram.hhs.gov/faqs.html)). In a long outage, that equipment can fail immediately, or within hours once backup batteries run down.
 
@@ -17,9 +17,10 @@ CareLine helps Jane Doe, a county public-health duty officer, check on every res
 3. A voice bot asks a short, fixed set of questions: are you safe, does your device have power, how many hours of battery are left, and do you need medicine, food or transport.
 4. **Bedrock understands the answers**, including messy and mixed-language speech, and turns them into structured fields. Deterministic rules, not the model, assign the triage level.
 5. Urgent cases go to a human immediately. Needs become tasks. Unanswered calls are retried, then become in-person welfare-check tasks.
-6. **Battery runway:** each resident's next check-in is scheduled before their backup battery runs out, and escalates as that deadline gets close.
-7. **Bedrock briefs Jane:** an operator copilot queries the live call data and writes a situation brief for each zone, plus a draft dispatch plan that Jane approves.
-8. **Bedrock answers residents' questions** ("where can I charge my oxygen machine?") only from a verified list of resource sites, with Bedrock Guardrails blocking medical advice.
+6. **Live priority map:** Jane works from a priority list of patients, highest priority on top, next to a live map of San Jose (Amazon Location Service) with every resident in the outage colored by triage and every hospital marked. Clicking a patient draws the route and the live-traffic drive time to their nearest hospital.
+7. **Battery runway:** each resident's next check-in is scheduled before their backup battery runs out, and escalates as that deadline gets close.
+8. **Bedrock briefs Jane:** an operator copilot queries the live call data and writes a situation brief for each zone, plus a draft dispatch plan that Jane approves.
+9. **Bedrock answers residents' questions** ("where can I charge my oxygen machine?") only from a verified list of resource sites, with Bedrock Guardrails blocking medical advice.
 
 **Amazon Bedrock's three jobs.**
 
@@ -38,7 +39,7 @@ CareLine helps Jane Doe, a county public-health duty officer, check on every res
 | 2 | Working application | 25 | The full loop recorded end to end on real AWS: trigger, call, triage, tasks, callback |
 | 3 | Use of AWS AI services | 20 | Bedrock in three integral roles, plus Lex, Polly and Connect |
 | 4 | Understanding what you built | 15 | Architecture walkthrough, including why rules decide and the model extracts |
-| 5 | Polish and presentation | 10 | Clean dashboard, natural voices, tight script and voiceover |
+| 5 | Polish and presentation | 10 | Clean dashboard with a live map, natural voices, tight script and voiceover |
 | 6 | Above and beyond | 10 | Evaluation across languages (0 missed urgent), guardrails, privacy design, Kiro specs and hooks |
 
 **Success criteria for the video.**
@@ -48,6 +49,7 @@ CareLine helps Jane Doe, a county public-health duty officer, check on every res
 - The evaluation shows **0 missed urgent cases** across 30 scenarios in each language.
 - The battery-runway callback and the two-attempt welfare-check escalation both appear on screen.
 - An audit entry with a rule ID and an operator override is shown.
+- Clicking the top patient in the priority list draws the route and live drive time to their nearest hospital on the map.
 
 **Assumptions (change if wrong):** a team of 4 (roles A to D), the event-provided AWS account in us-east-1, Kiro credits for each person, building from about 4 PM Friday to a 6 AM Saturday feature freeze, then recording and editing until submission.
 
@@ -65,7 +67,8 @@ Ship the call loop and the Bedrock copilot first; everything else is optional. I
 | Battery-runway callback (Step Functions wait) | Must | B | Time-compressed for the video |
 | Retry ×2, then welfare-check task | Must | B |  |
 | **Bedrock job 2: operator copilot** (zone brief + dispatch draft) | Must | C | Converse API tool use, read-only tools; Jane approves |
-| Dashboard: live call feed, task queue, override, copilot panel | Must | C | Table first, map later |
+| Dashboard: priority list, live call feed (log only), task queue, override, copilot panel | Must | C | The priority list is the primary view |
+| **Live map (Amazon Location)**: triage pins, hospitals from CSV, route and drive time to the nearest hospital on click | Must | C (UI), B (geo Lambda), D (CSVs) | Spec: [`.plans/amazon-location-map-spec.md`](../.plans/amazon-location-map-spec.md). Has its own cut ladder; the map panel itself is never cut |
 | Audit log with rule IDs and overrides | Must | B |  |
 | 30-scenario evaluation + missed-urgent metric | Must | D | Runs against the same code |
 | 5-minute video | Must | D | Recording starts at the 6 AM freeze |
@@ -73,7 +76,6 @@ Ship the call loop and the Bedrock copilot first; everything else is optional. I
 | Hindi live on voice | Should | A | Lex supports hi\_IN with Hindi–English mixing |
 | SMS fallback for unanswered residents | Should | B | Needs an SMS-capable number |
 | Per-language fairness chart | Should | D | Same 30 scenarios in each language |
-| Map view by neighborhood | Should | C | Static GeoJSON is enough |
 | Preparedness coach | Cut | — | Roadmap mention in the video |
 | Vietnamese voice | Cut | — | Lex vi\_VN has limited feature support |
 | Operator login (Cognito) | Cut | — | API key on API Gateway is enough |
@@ -99,6 +101,11 @@ flowchart TD
   hook --> br["Amazon Bedrock<br/>extract answers; KB + Guardrails for Q&A"]
   hook -->|call result + task token| ddb
   copilot -.->|tool calls| ddb
+  dash -->|map tiles, API key| maps["Amazon Location Maps<br/>Monochrome Light"]
+  eb -->|outage started| geo["Lambda geo<br/>nearest hospital by drive time"]
+  api -->|route on click| geo
+  geo -->|route matrix, route| routes["Amazon Location Routes"]
+  geo -->|hospital access| ddb
 ```
 
 Read the middle column top to bottom for one call; the highlighted box is where triage is decided, by rules rather than the model.
@@ -117,6 +124,7 @@ Read the middle column top to bottom for one call; the highlighted box is where 
 | Amazon EventBridge | Decouples outage start/end and check-in events from the workflows |
 | AWS Lambda | Dialer, Lex hook, triage rules, copilot tools and the API |
 | Amazon DynamoDB | Serverless state with TTL for automatic transcript deletion |
+| Amazon Location Service | Maps draws the live San Jose map. Routes finds each resident's nearest hospital by live-traffic drive time when an outage starts, and draws the route when Jane clicks a patient |
 | API Gateway, S3, CloudFront | Operator API and dashboard hosting |
 | Kiro | Spec-driven development, steering and eval hooks |
 
@@ -132,13 +140,17 @@ Do all setup in the first hour, because a new Amazon Connect instance can block 
 - [ ] Claim a US DID phone number. If it fails with a limit error, open a support case and switch to the web-call fallback immediately.
 - [ ] Enable Bedrock model access for a fast Claude Haiku model and a Claude Sonnet model, and turn on model invocation logging to CloudWatch Logs for the video (B).
 - [ ] Create a Lex V2 bot `CareLineCheckIn` with locales en\_US, es\_US, hi\_IN (A).
+- [ ] Confirm Amazon Location is allowed: run one `geo-routes` `CalculateRouteMatrix` between two San Jose points from the event account (B).
+- [ ] Create the map API key `careline-map-key` (tiles only, localhost referrer, expires Oct 31) and load the Monochrome Light style in a blank Vite page (C). If the style returns 403 with `geo-maps:GetTile` alone, widen to `geo-maps:*`.
 - [ ] Create an AWS Budgets alert at $25 with email to the whole team (D).
 - [ ] Create one IAM role per Lambda with least privilege; no shared admin keys in code (B).
 - [ ] Set up the repo and Kiro workspace, with `.kiro/steering/` files committed (D, see the Kiro section).
 
 **Infrastructure as code.** Use AWS CDK in Python (or SAM if the team prefers). Kiro can generate the stacks from the design spec. Stack names: `CareLineData`, `CareLineCore`, `CareLineApi`, `CareLineWeb`. Configure Connect, the contact flow and the Lex bot in the console first, export the flow JSON into the repo, and only automate them if time allows.
 
-**Environment variables (Lambda):** `TABLE_RESIDENTS`, `TABLE_CALLS`, `TABLE_TASKS`, `TABLE_AUDIT`, `CONNECT_INSTANCE_ID`, `CONNECT_FLOW_ID`, `CONNECT_SOURCE_NUMBER`, `BEDROCK_MODEL_ID`, `STATE_MACHINE_ARN`.
+**Environment variables (Lambda):** `TABLE_RESIDENTS`, `TABLE_CALLS`, `TABLE_TASKS`, `TABLE_AUDIT`, `CONNECT_INSTANCE_ID`, `CONNECT_FLOW_ID`, `CONNECT_SOURCE_NUMBER`, `BEDROCK_MODEL_ID`, `STATE_MACHINE_ARN`, `HOSPITAL_CANDIDATES` (3), `ROUTE_CACHE_MIN` (15), `DRIVE_TIE_WINDOW_MIN` (30).
+
+**Environment variables (web, in `web/.env.local`):** `VITE_AWS_REGION`, `VITE_LOCATION_API_KEY` (read with `aws location describe-key --key-name careline-map-key` after deploying; never commit it), `VITE_MAP_STYLE` (Monochrome).
 
 **Cost guardrails.** Connect bills per minute of voice; keep demo calls under 2 minutes. Delete the instance after judging. Release the phone number before deleting, since repeated claim-and-release cycles can block future claims for months.
 
@@ -180,6 +192,8 @@ Tests sit next to code as test_*.py and use pytest + moto.
 
 Example requirement in EARS style for the triage spec: *WHEN a call result reports device power OFF AND battery\_hours < 4, THE SYSTEM SHALL assign triage URGENT, create an operator alert within 5 seconds, and write an audit record with rule\_id R1.*
 
+The map work has no spec of its own: its requirements go into `operator-dashboard` (priority list, map panel), `call-orchestration` (Lambda `geo`, `priority_key()`) and `copilot` (drive-time enrichment), using [`.plans/amazon-location-map-spec.md`](../.plans/amazon-location-map-spec.md) as the prompt source. Example: *WHEN the operator selects a resident in the priority list or on the map, THE SYSTEM SHALL draw the driving route from the resident to their nearest hospital and show the drive time in real-world minutes, with its traffic basis, within 3 seconds.*
+
 **3. Agent hooks.** Set up two:
 
 - **On save of `lambdas/triage/rules.py`:** run `pytest eval/` and report any scenario whose expected triage changed. This keeps "0 missed urgent cases" true all day.
@@ -197,7 +211,7 @@ Four on-demand DynamoDB tables keep the model simple; transcripts expire automat
 
 | Table | Partition key | Sort key | Key attributes | TTL |
 | --- | --- | --- | --- | --- |
-| `Residents` | `resident_id` | — | `name`, `phone_e164`, `language` (en/es/hi), `zone_id`, `risk_tier` (1 = ventilator/oxygen, 2 = dialysis/refrigerated medicine, 3 = mobility device), `device_type`, `consent` (true), `emergency_contact` | none |
+| `Residents` | `resident_id` | — | `first_name`, `last_name`, `phone_e164`, `language` (en/es/hi), `zone_id`, `zone_name`, `risk_tier` (1 = ventilator/oxygen, 2 = dialysis/refrigerated medicine, 3 = mobility device), `device_type`, `consent` (true), `emergency_contact_phone`, `lat`, `lng`, `hospital_access` (nearest hospital, drive time, basis and cached route, written at outage start) | none |
 | `Calls` | `outage_id` | `resident_id#attempt` | `contact_id`, `status` (QUEUED/RINGING/ANSWERED/NO\_ANSWER/FAILED), `extracted` (JSON), `triage`, `rule_id`, `battery_hours`, `next_check_at`, `transcript_redacted`, `expires_at` | `expires_at` = now + 24 h |
 | `Tasks` | `task_id` | — | `type` (OPERATOR\_ALERT/WELFARE\_CHECK/TRANSPORT/MEDICINE/FOOD/INFO\_SMS), `resident_id`, `outage_id`, `priority`, `status` (OPEN/ACK/DONE), `assigned_to` | none |
 | `Audit` | `outage_id` | `ts#event_id` | `actor` (system/operator id), `action`, `resident_id`, `rule_id`, `inputs_hash`, `before`, `after`, `reason` | none |
@@ -206,7 +220,11 @@ Four on-demand DynamoDB tables keep the model simple; transcripts expire automat
 
 **What never gets stored:** diagnoses, medication names, or the raw unredacted transcript. The audit log stores decision codes and a hash of the inputs, which lets you prove what the rule saw without keeping the health detail.
 
-**Synthetic data (person D, first 90 minutes).** A seed script writes 40 residents across 4 zones: roughly 10 at tier 1, 15 at tier 2 and 15 at tier 3; 20 English, 12 Spanish and 8 Hindi. Point 3 to 5 records at team members' real phones for the live demo, with their consent; every other number is a fake that the dialer skips. Also seed 5 resource sites (2 charging/cooling centers, 1 shelter, 1 pharmacy with backup power, 1 food distribution point) with addresses and hours.
+**Synthetic data (person D, first 90 minutes).** `scripts/seed.py` loads 40 residents from a CSV with lat/lng across 4 San Jose zones (Z1 Downtown, Z2 East San Jose, Z3 Berryessa, Z4 South San Jose): roughly 10 at tier 1, 15 at tier 2 and 15 at tier 3; 20 English, 12 Spanish and 8 Hindi. The real file, `data/private/residents.csv`, is gitignored because it holds the 3 to 5 team members' real phones for the live demo (with their consent); `data/residents.sample.csv` is a committed copy with fake data. Every other number is a fake that the dialer skips. Zone 2 must include two tier-1 residents whose battery deadlines land in the same 30-minute bucket but whose drive times to the nearest hospital differ (about 9 vs 22 min), so the drive-time tie-break shows on video.
+
+**Hospitals.** `data/hospitals.csv` (committed) is the team's curated list of San Jose acute-care hospitals with emergency departments: `hospital_id`, `name`, `address`, `city`, `lat`, `lng`, optional `phone`. `scripts/build_geo_data.py` validates it and writes `web/public/hospitals.geojson` and `lambdas/shared/careline_shared/hospitals.json`. There is no hospitals table.
+
+Also seed 5 resource sites (2 charging/cooling centers, 1 shelter, 1 pharmacy with backup power, 1 food distribution point) with addresses and hours.
 
 **Extraction schema (`schemas/checkin.json`):**
 
@@ -363,15 +381,17 @@ Bedrock is the AI core of CareLine, with three bounded jobs that each appear on 
 | Tool | Returns |
 | --- | --- |
 | `get_zone_summary(outage_id, zone_id)` | Counts by triage level, % contacted, unreached count |
-| `list_open_cases(outage_id, zone_id, triage?)` | Residents with triage, rule ID, needs and next deadline |
+| `list_open_cases(outage_id, zone_id, triage?)` | Residents already sorted by `priority_key()`, with rank, triage, rule ID, needs, next deadline, nearest hospital, drive minutes and drive basis (no coordinates or addresses) |
 | `get_battery_deadlines(outage_id, within_hours)` | Residents whose battery runway ends within the window |
 | `list_resource_sites(zone_id)` | Charging and cooling sites with hours and address |
+| `list_hospitals(zone_id)` | Hospitals from the bundled CSV, nearest to the zone first, with name, address and phone |
 
 - **Output:** JSON with `headline`, `priorities` (each with `resident_ids` and a reason), `dispatch_plan` (teams and ordered stops) and `open_questions`. The dashboard renders it as a card, and every resident ID links to that resident's drawer.
 - **Human approval:** an "Approve plan" button creates the tasks through the normal API, audited with Jane as the actor. The copilot itself never writes data.
-- **Checks:** the Lambda rejects any brief that cites a resident ID not returned by a tool, and retries once.
-- **System prompt (abridged):** "You assist a public-health duty officer during a power outage. Use only facts returned by tools. Every priority must cite resident IDs. Order priorities by risk and battery deadline. Never give medical advice. If data is missing, say what is missing."
-- **Example brief for the video:** "Zone 2: 3 urgent, 2 oxygen users unreached after two calls, 4 batteries run out within 2 hours. Send Team A to R-114 and R-131 first (oxygen, unreached), then Team B to the 4 battery deadlines in order; nearest charging site: Eastside Library, open until 9 PM."
+- **Checks:** the Lambda rejects any brief that cites a resident ID or hospital not returned by a tool, or that lists priorities out of `priority_key()` rank order, and retries once. If the order is still wrong, the code reorders it and marks the brief `reordered: true`.
+- **Priority order is computed in code, not by the model.** `priority_key()` (shared Lambda layer) sorts by triage group, then risk tier, then a 30-minute battery-deadline bucket, then the longer drive to the nearest hospital first. The same function sorts the dashboard's priority list, so the brief and the list never disagree.
+- **System prompt (abridged):** "You assist a public-health duty officer during a power outage. Use only facts returned by tools. Every priority must cite resident IDs. Keep priorities in the order list\_open\_cases returns. When a priority involves transport, give the nearest hospital and drive time exactly as the tool returned them. Drive times are logistics information: never recommend where a resident should receive medical care. Never give medical advice. If data is missing, say what is missing."
+- **Example brief for the video:** "Zone 2: 3 urgent, 2 oxygen users unreached after two calls, 4 batteries run out within 2 hours. R-131 and R-114 are both tier 1 with batteries running out around 18:30; R-131 is first because it is 22 min to Regional Medical Center (live traffic) versus 9 min. Send Team A to R-131 and R-114, then Team B to the 4 battery deadlines in order; nearest charging site: Eastside Library, open until 9 PM."
 
 **Job 3 — Grounded answers for residents (should).**
 
@@ -393,6 +413,8 @@ The dashboard is a single React page that polls a small REST API every 3 seconds
 | POST | `/outages` | Body `{zone_id}`. Creates the outage, emits `careline.outage.started`, starts `CallWave` |
 | POST | `/outages/{id}/end` | Emits `careline.outage.ended`; stops pending callbacks |
 | GET | `/outages/{id}/summary` | Counts by triage, zone and language; contacted %; unreached count |
+| GET | `/outages/{id}/priority` | Every resident in the outage sorted by `priority_key()`, with rank, lat/lng, triage group, rule ID, battery deadline and nearest-hospital drive time. One poll feeds both the priority list and the map |
+| GET | `/residents/{id}/hospital-route?outage_id=` | Route line (GeoJSON LineString), drive minutes, distance, traffic basis and hospital details. Lambda `geo` calls Amazon Location `CalculateRoutes`; cached 15 min |
 | GET | `/calls?outage_id=` | Live call feed, newest first |
 | GET | `/residents/{id}/timeline` | Attempts, extracted answers, rule IDs, next check time |
 | GET | `/tasks?status=OPEN` | Task queue sorted by priority |
@@ -407,12 +429,16 @@ The dashboard is a single React page that polls a small REST API every 3 seconds
 **Dashboard layout (person C).**
 
 1. **Header:** outage name and zone, a "Trigger outage" and "End outage" button, the compressed clock with real-world time beside it, and counters (called, reached, urgent, unreached).
-2. **Zone table:** one row per neighborhood with residents, % contacted, urgent count, unreached count and a "Brief me" button. Swap to a map later if time allows.
-3. **Copilot panel:** the Bedrock brief and dispatch plan for the selected zone, with resident IDs as links, an "Approve plan" button, and an "Ask CareLine" box.
-4. **Live call feed:** each call as a row with status chip, language flag, triage chip and rule ID. New rows highlight briefly.
-5. **Task queue:** urgent alerts pinned on top in red, then welfare checks, then service tasks. Ack and Done buttons.
-6. **Resident drawer (click any row):** attempt timeline, the redacted transcript beside Bedrock's extracted JSON, the battery-runway countdown, the deciding rule, and an Override button that requires a reason.
-7. **Fairness and privacy panel:** per-language and per-zone metrics from `/metrics/fairness`, plus a fixed "What we store / what we never store" card and the transcript expiry time.
+2. **Zone strip:** one chip per zone with % contacted, urgent count and unreached count, plus a "Brief me" button for the selected zone.
+3. **Priority list (primary view, left):** one row per resident in the outage, highest priority on top: rank, resident ID, triage chip, rule ID, risk tier, battery deadline, attempts and "Drive to hospital" (real-world minutes). The order comes from the API; the frontend never re-sorts. Clicking a row selects the resident.
+4. **Map panel (right, Amazon Location Monochrome Light):** resident pins for the active outage only, colored by triage group and numbered by rank; every hospital from the CSV; a "Synthetic data" badge. Selecting a resident (list row or pin) draws the route to their nearest hospital with a chip: "22 min drive, 9.4 km, live traffic as of 14:02, hospital name, phone". Polls never move the camera. If the map fails to load, the panel hides and the list goes full width.
+5. **Copilot panel:** the Bedrock brief and dispatch plan for the selected zone, with resident IDs as links, an "Approve plan" button, and an "Ask CareLine" box.
+6. **Task queue:** urgent alerts pinned on top in red, then welfare checks, then service tasks. Ack and Done buttons.
+7. **Live call feed (log only):** each call as a row with status chip, language flag, triage chip and rule ID. New rows highlight briefly. Clicking it does not select a resident or draw a route.
+8. **Resident drawer (opens with the selection):** attempt timeline, the redacted transcript beside Bedrock's extracted JSON, the battery-runway countdown, the deciding rule, and an Override button that requires a reason.
+9. **Fairness and privacy panel:** per-language and per-zone metrics from `/metrics/fairness`, plus a fixed "What we store / what we never store" card and the transcript expiry time.
+
+The full map design (layers, colors, camera rules, key restrictions, fallbacks) is in [`.plans/amazon-location-map-spec.md`](../.plans/amazon-location-map-spec.md).
 
 **Hosting.** Build with Vite and deploy to S3 + CloudFront, or Amplify Hosting if that is faster for the team. Put the API key in a build-time environment variable for the demo only.
 
@@ -434,6 +460,10 @@ The AI is limited to one narrow job, turning speech into structured fields, and 
 | Silent overrides | Override needs a reason; audit stores who, when, before and after | `/calls/{id}/override` |
 | Model or prompt drift during the day | Kiro hook re-runs the eval suite on every change to the rules or schemas | `.kiro/hooks` |
 | Copilot invents facts or acts on its own | Read-only tools; every priority must cite resident IDs the tools returned (checked in code); Jane approves every plan before tasks exist | copilot Lambda + /copilot/approve |
+| Model reorders who is seen first | Priority order comes from `priority_key()` in code; the brief must keep that order (checked in code) | shared layer + copilot Lambda |
+| Copilot recommends a hospital for medical care | Drive times are framed as logistics; the prompt forbids medical destination advice; residents never hear a hospital name; 911 and EMS decide | copilot prompt + script library |
+| Stale or wrong drive time changes the order | Drive time only breaks ties inside the same triage group, risk tier and 30-minute deadline bucket; never changes triage; every value shows its traffic basis and "as of" time; straight-line fallback is labeled | `priority.py`, map chip |
+| Home locations leak | Synthetic data only; the real residents CSV is gitignored; coordinates are never sent to Bedrock; Amazon Location removes customer metadata and account information from queries before they reach data providers; the browser map key allows tiles only, is referrer-locked and expires Oct 31 | `data/private/`, copilot tools, CareLineWeb stack |
 
 **Risk register.** Put the table above on one slide, titled "How CareLine fails safely," with a column for residual risk. The honest residual risks: speech recognition errors for strong accents or poor phone lines, and residents without any working phone. The mitigation for both is the same: unclear or unreachable becomes a human task.
 
@@ -484,6 +514,8 @@ The evaluation proves the one claim that matters: across 30 scenarios in each la
 
 If a scenario fails, fix the rule or the prompt, never the expected answer, unless the team agrees the expectation was wrong and writes down why.
 
+**Priority and geo tests (pytest, person D).** `test_priority.py` covers the group order, unknown deadlines sorting first, the 30-minute bucket tie-break by drive time, and a stable order. `test_geo.py` stubs `geo-routes` with a botocore `Stubber` (moto may not cover the new Routes API) for candidate selection, matrix cells that return `Error`, the straight-line fallback and the route cache. A Kiro hook runs the priority tests whenever `priority.py` changes, and `scripts/build_geo_data.py` whenever a CSV in `data/` changes.
+
 ## Team split and timeline
 
 Four workstreams run in parallel and meet at four checkpoints; the voice path must work end to end by 7 PM Friday, or the team switches to web calling without debate.
@@ -491,21 +523,21 @@ Four workstreams run in parallel and meet at four checkpoints; the voice path mu
 | Role | Owns | Kiro spec | In the video |
 | --- | --- | --- | --- |
 | A — Voice + grounded answers | Connect instance and number, contact flow, Lex bot, script library, web-call fallback, Bedrock job 3 (Knowledge Base + Guardrails) | `voice-agent` | Plays the resident on the recorded calls |
-| B — Orchestration (fits a Python and event-driven background) | `dialer`, `lex_hook`, Bedrock job 1 (extraction), triage rules, Step Functions, EventBridge, tasks, audit, CDK stacks | `call-orchestration` | Narrates the architecture segment |
-| C — Dashboard + copilot | React app, API Lambdas, override flow, Bedrock job 2 (operator copilot), Connect agent workspace | `operator-dashboard`, `copilot` | Plays Jane Doe on screen |
-| D — Data, evaluation and video | Seed data, 30 scenarios, eval harness, Kiro steering and hooks, budget alert, video script, recording, editing, submission | `evaluation` | Producer and editor; presents the evaluation |
+| B — Orchestration (fits a Python and event-driven background) | `dialer`, `lex_hook`, Bedrock job 1 (extraction), triage rules, Step Functions, EventBridge, tasks, audit, CDK stacks, Lambda `geo` (Amazon Location Routes), `priority_key()` and the shared layer | `call-orchestration` | Narrates the architecture segment |
+| C — Dashboard + copilot | React app, priority list, map panel (Amazon Location Maps and its API key), API Lambdas, override flow, Bedrock job 2 (operator copilot, including the drive-time enrichment), Connect agent workspace | `operator-dashboard`, `copilot` | Plays Jane Doe on screen |
+| D — Data, evaluation and video | Residents and hospital CSVs, `build_geo_data.py`, seed data, 30 scenarios, eval harness, priority and geo tests, Kiro steering and hooks, budget alert, video script, recording, editing, submission | `evaluation` | Producer and editor; presents the evaluation |
 
-**Smaller team?** With 3 people, D's evaluation work moves to B and the video moves to C after the 6 AM freeze. With 2, one person takes A + C and the other takes B + D; Hindi, the map, SMS and Bedrock job 3 move to "cut," but the copilot stays.
+**Smaller team?** With 3 people, D's evaluation work moves to B and the video moves to C after the 6 AM freeze. With 2, one person takes A + C and the other takes B + D; Hindi, SMS, Bedrock job 3 and the map's route-on-click and drive-time features move to "cut," but the copilot and the basic map panel (pins and hospitals) stay.
 
 **Integration rule.** Merge to `main` at least every 2 hours. Each checkpoint below is a 10-minute standing demo of the real system, not a status update.
 
 | When (PT) | Phase | Work | Gate at the end |
 | --- | --- | --- | --- |
-| Fri 4–5 PM | Setup | Event account check, Connect instance and number, Bedrock access and logging, Lex bot shell, repo, CDK skeleton, Kiro steering, budget alert | — |
-| Fri 5–7 PM | First call | A: contact flow + English Lex bot. B: dialer + lex_hook with Bedrock extraction. C: dashboard skeleton + API stubs. D: seed residents, 30 scenarios, video script draft | **G1, 7 PM:** one real AI call end to end, or switch to web calling |
-| Fri 7–11 PM | Core loop | B: triage rules, workflows, tasks, audit. C: live feed, task queue, copilot tools. A: Spanish + Knowledge Base. D: eval passing in English, Kiro hook on | **G2, 11 PM:** full loop on seed data + first copilot brief |
-| Fri 11 PM – Sat 3 AM | Bedrock jobs and escalation | Copilot brief/ask/approve; retries, welfare checks, battery-runway callbacks; grounded answers with Guardrails; emergency transfer; eval in every language | **G3, 3 AM:** 0 missed urgent; Bedrock jobs 1 and 2 work |
-| Sat 3–6 AM | Polish (sleep in shifts) | Dashboard polish, fairness chart, Hindi, map if time. Cut order: map, SMS, Hindi voice, fairness chart | **Freeze, 6 AM:** bug fixes only; recording starts |
+| Fri 4–5 PM | Setup | Event account check, Connect instance and number, Bedrock access and logging, Amazon Location check (B: one route matrix call; C: map key and tiles load), Lex bot shell, repo, CDK skeleton, Kiro steering, budget alert | — |
+| Fri 5–7 PM | First call | A: contact flow + English Lex bot. B: dialer + lex_hook with Bedrock extraction. C: dashboard skeleton + API stubs + map panel with static sample pins and hospitals. D: residents and hospital CSVs, `build_geo_data.py`, seed residents, 30 scenarios, video script draft | **G1, 7 PM:** one real AI call end to end, or switch to web calling |
+| Fri 7–11 PM | Core loop | B: triage rules, workflows, tasks, audit, `priority_key()`, Lambda `geo` drive times at outage start, `/outages/{id}/priority`. C: priority list, live feed, task queue, copilot tools. A: Spanish + Knowledge Base. D: eval passing in English, Kiro hook on, priority tests | **G2, 11 PM:** full loop on seed data + first copilot brief + priority list and live pins from the poll |
+| Fri 11 PM – Sat 3 AM | Bedrock jobs and escalation | Copilot brief/ask/approve with drive-time enrichment and order check; route on click; retries, welfare checks, battery-runway callbacks; grounded answers with Guardrails; emergency transfer; eval in every language | **G3, 3 AM:** 0 missed urgent; Bedrock jobs 1 and 2 work; route on click works |
+| Sat 3–6 AM | Polish (sleep in shifts) | Dashboard and map polish (legend, badge, route chip, fallback test), fairness chart, Hindi. Cut order: SMS, Hindi voice, fairness chart. Map sub-features: copilot drive-time tie-breaker, then route on click, then drive-time column; the map panel stays | **Freeze, 6 AM:** bug fixes only; recording starts |
 | Sat 6–10:30 AM | Record, edit, submit | 6–9 AM record each segment twice + CloudWatch Bedrock logs; 9–10 AM edit and voiceover; submit by 10:00 AM | **Deadline 10:30 AM** |
 
 Judging is done from the video alone, so recording gets four protected hours; if the build runs late, shrink Polish, never the recording window.
@@ -525,7 +557,9 @@ The biggest risk is telephony setup, not code; every risk below has a pre-agreed
 | Lex misrecognizes Hindi or accented speech | Medium | Rely on Bedrock extraction of the raw transcript; if still poor, drop Hindi from the video | 3 AM (G3) |
 | Something breaks during recording | Medium | Screen-record every successful run from G2 onward; record each segment twice | 6 AM |
 | Video runs over 5 minutes or uploads slowly | Medium | Script to 4:40; export 1080p; start the upload by 10:00 AM | 10 AM Sat |
-| Running out of time | High | Cut in this order: map → SMS → Hindi voice → fairness chart → Bedrock job 3. Never cut the copilot, the eval or the escalation path | 6 AM freeze |
+| Event account blocks Amazon Location, or the map key fails | Low–medium | If the style fails to load, the map panel hides and the priority list goes full width; if routing fails, drive times fall back to straight-line distance labeled "distance, not drive time" | 5 PM Fri |
+| Map key rejected on the CloudFront domain | Medium | The key's referrers include `http://localhost:5173/*` and the CloudFront domain; test the deployed site at G2, and record from localhost if needed | 11 PM (G2) |
+| Running out of time | High | Cut in this order: SMS → Hindi voice → fairness chart → Bedrock job 3. Map sub-features, decided at G3: copilot drive-time tie-breaker → route on click → drive-time column. Never cut the copilot, the eval, the escalation path or the map panel | 6 AM freeze |
 
 **Rules for switching.** At each gate, the owner says "go" or "fallback" in one sentence, and the team moves on. Nobody spends more than 45 minutes stuck on console configuration without asking an AWS mentor.
 
@@ -536,9 +570,9 @@ The submission is a video of at most 5 minutes that must show the architecture, 
 | Time | Segment | On screen | Rubric items |
 | --- | --- | --- | --- |
 | 0:00–0:35 | **Jane's problem** | Title cards: shutoff notice, "400 residents on powered medical equipment, 3 staff," a battery icon draining. Voiceover introduces Jane Doe | 1 |
-| 0:35–1:15 | **Architecture** | The architecture diagram, highlighting Bedrock's three jobs and the rules box; a quick look at the real Step Functions graph and Connect flow in the console | 4, 3 |
-| 1:15–2:45 | **The application** | Jane triggers an outage in Zone 2 → the call feed fills, highest risk first → a recorded Spanish call, split-screen with the dashboard → the triage card shows the transcript beside Bedrock's JSON → an emergency call transfers to a person → an unreachable resident becomes a welfare check → a battery-runway callback fires on the compressed clock | 2 |
-| 2:45–3:50 | **Bedrock in use** | Jane clicks "Brief me" → the copilot brief appears with linked resident IDs → "Approve plan" creates tasks → a resident asks where to charge their machine and gets a grounded answer → a medical question is blocked by Guardrails and transferred → CloudWatch invocation logs | 3 |
+| 0:35–1:15 | **Architecture** | The architecture diagram, highlighting Bedrock's three jobs, the rules box and Amazon Location (Maps for the base map, Routes for drive times); a quick look at the real Step Functions graph and Connect flow in the console | 4, 3 |
+| 1:15–2:45 | **The application** | Jane triggers an outage in Zone 2 (East San Jose) → grey pins appear on the map and the call feed fills, highest risk first → pins turn color and the priority list reorders as calls finish → a recorded Spanish call, split-screen with the dashboard → Jane clicks rank 1: the drawer shows the transcript beside Bedrock's JSON while the map draws the route and drive time to the nearest hospital → an emergency call transfers to a person → an unreachable resident becomes a welfare check → a battery-runway callback fires on the compressed clock | 2 |
+| 2:45–3:50 | **Bedrock in use** | Jane clicks "Brief me" → the copilot brief appears with linked resident IDs and explains the drive-time tie-break → "Approve plan" creates tasks → a resident asks where to charge their machine and gets a grounded answer → a medical question is blocked by Guardrails and transferred → CloudWatch invocation logs | 3 |
 | 3:50–4:30 | **Above and beyond** | Evaluation report: 30 scenarios per language, 0 missed urgent, the per-language chart; the Kiro hook re-running it; the privacy card; an audited override | 6, 4 |
 | 4:30–4:50 | **Close** | Back to Jane: what used to take her team a day now takes minutes. Tagline, team names and contact through the event channel | 1, 5 |
 
@@ -548,6 +582,7 @@ The submission is a video of at most 5 minutes that must show the architecture, 
 - Record the voiceover separately from the screen, then lay it over; add captions.
 - Pre-fill anything typed on screen; no live typing in the video.
 - Run the demo with `TIME_SCALE=60` so the battery-runway callback happens on camera.
+- The map replaces the zone-table shots, so it adds no seconds. Don't say a specific number of drive minutes in the voiceover: live traffic changes between takes.
 - Keep every successful run you recorded from G2 onward as backup footage.
 
 **Submission checklist.**
@@ -559,7 +594,8 @@ The submission is a video of at most 5 minutes that must show the architecture, 
 - [ ] List of AWS services and why each is used (from the architecture section)
 - [ ] `eval/report.json` and a screenshot of the results in the repo
 - [ ] Statement that all resident data is synthetic and the demo phones belong to consenting teammates
-- [ ] After judging: release the phone number, delete the Connect instance and the Knowledge Base, and tear down the CDK stacks
+- [ ] Confirm `data/private/` (real phones) is not in the public repo
+- [ ] After judging: release the phone number, delete the Connect instance and the Knowledge Base, and tear down the CDK stacks (this also deletes the map API key, which expires Oct 31 regardless)
 
 ## Sources
 
@@ -572,3 +608,8 @@ The submission is a video of at most 5 minutes that must show the architecture, 
 - [Kiro (GitHub)](https://github.com/kirodotdev/Kiro)
 - [Amazon Kiro use cases and introduction (AWS Builder Center)](https://builder.aws.com/content/3CuKNklw8cDhXjreLYoznoj6dyx/amazon-kiro-use-cases-and-introduction)
 - [Kiro MCP security](https://kiro.dev/fr/docs/mcp/security/)
+- [Amazon Location CalculateRouteMatrix (Routes API)](https://docs.aws.amazon.com/location/latest/APIReference/API_CalculateRouteMatrix.html)
+- [Amazon Location API key restrictions](https://docs.aws.amazon.com/location/previous/APIReference/API_ApiKeyRestrictions.html)
+- [Amazon Location actions and resource ARNs](https://docs.aws.amazon.com/location/latest/developerguide/authenticating-using-cognito.html)
+- [Amazon Location data privacy](https://docs.aws.amazon.com/location/latest/developerguide/data-privacy.html)
+- [Enhanced Amazon Location with MapLibre (AWS blog)](https://aws.amazon.com/blogs/mobile/new-features-and-developer-experience-with-enhanced-amazon-location-service/)

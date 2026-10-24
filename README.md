@@ -18,8 +18,8 @@ Sparthill hackathon, October 2026.
 
 ## The persona: Jane Doe
 
-Jane is the duty officer for a county public-health department during a planned utility
-power shutoff. She has **3 staff**, about **400 residents** on oxygen concentrators,
+Jane is the duty officer for the Santa Clara County public-health department (San Jose,
+CA) during a planned utility power shutoff. She has **3 staff**, about **400 residents** on oxygen concentrators,
 ventilators or home dialysis, and only hours before their backup batteries run out.
 Today she works from a spreadsheet and a phone.
 
@@ -43,7 +43,11 @@ spends dialing is an hour in which someone's battery runs down without anyone kn
 6. **Battery runway:** each resident's next check-in is scheduled before their battery
    runs out, and escalates as the deadline gets close.
 7. **No answer twice → welfare check.** An in-person task is created automatically.
-8. **Bedrock briefs Jane:** an operator copilot reads the live data and writes a zone
+8. **Live priority map:** Jane works from a priority list, highest priority on top, next
+   to an Amazon Location Service map of San Jose showing each resident by triage and
+   every hospital. Clicking a patient draws the route and live-traffic drive time to
+   their nearest hospital.
+9. **Bedrock briefs Jane:** an operator copilot reads the live data and writes a zone
    brief and a draft dispatch plan. Tasks are only created when Jane approves.
 
 ## Amazon Bedrock's three jobs
@@ -72,6 +76,11 @@ flowchart TD
   hook --> br["Amazon Bedrock<br/>extract answers; KB + Guardrails for Q&A"]
   hook -->|call result + task token| ddb
   copilot -.->|tool calls| ddb
+  dash -->|map tiles, API key| maps["Amazon Location Maps"]
+  eb -->|outage started| geo["Lambda geo<br/>nearest hospital by drive time"]
+  api -->|route on click| geo
+  geo -->|route matrix, route| routes["Amazon Location Routes"]
+  geo -->|hospital access| ddb
 ```
 
 ### AWS services and why
@@ -88,6 +97,7 @@ flowchart TD
 | Amazon EventBridge | Outage and check-in events that drive the workflows |
 | AWS Lambda | Dialer, Lex hook, triage rules, copilot tools, API |
 | Amazon DynamoDB | State, with TTL for automatic transcript deletion |
+| Amazon Location Service | Maps for the live San Jose map; Routes for each resident's drive time to the nearest hospital and the route shown on click |
 | API Gateway, S3, CloudFront | Operator API and dashboard hosting |
 | Kiro | Spec-driven development, steering files and eval hooks |
 
@@ -118,6 +128,10 @@ The first matching rule wins, and its ID is written to the audit log.
 - **Consent.** Opt-in registry only; "stop" on any call opts the resident out.
 - **All demo data is synthetic.** The dialer only calls numbers on an allow-list of
   consenting teammates.
+- **Code orders, the model explains.** The priority list and the copilot brief share one
+  sort function (`priority_key()`). Drive time only breaks ties, and it is shown as
+  logistics, never as a recommendation for where to receive care. Coordinates never
+  reach Bedrock, and the browser map key allows map tiles only.
 
 ## Evaluation
 
@@ -138,10 +152,13 @@ changes.
 ```
 .kiro/steering/        Kiro steering: product, tech, structure, plan (manual)
 .kiro/specs/           Kiro specs per workstream (generated in Kiro)
+.plans/                Feature specs (amazon-location-map-spec.md)
 docs/careline-plan.md  Full implementation plan
 schemas/               JSON schemas shared by Lambdas and the eval
+data/                  hospitals.csv, residents.sample.csv; private/ is gitignored (planned)
+scripts/               seed.py, build_geo_data.py (planned)
 infra/                 CDK stacks (planned)
-lambdas/               dialer, lex_hook, triage, copilot, api (planned)
+lambdas/               dialer, lex_hook, triage, copilot, api, geo, shared layer (planned)
 eval/                  scenarios and harness (planned)
 connect/               exported Connect contact flow (planned)
 kb/                    Knowledge Base source documents (planned)
@@ -158,9 +175,15 @@ git clone <this repo> && cd careline
 cp .env.example .env               # fill in IDs after deploying
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cd infra && cdk deploy --all       # tables, workflows, Lambdas, API, dashboard
-python scripts/seed.py             # 40 synthetic residents, 5 resource sites
+python scripts/build_geo_data.py   # validates data/*.csv, writes hospitals GeoJSON/JSON
+cd infra && cdk deploy --all       # tables, workflows, Lambdas, API, dashboard, map key
+python scripts/seed.py             # 40 synthetic residents from RESIDENTS_CSV, 5 resource sites
 ```
+
+`scripts/seed.py` reads `data/private/residents.csv` (gitignored, shared out of band) and
+falls back to `data/residents.sample.csv`. After deploying, read the map key with
+`aws location describe-key --key-name careline-map-key`, put it in `web/.env.local` as
+`VITE_LOCATION_API_KEY`, then build and deploy the web app. Never commit the key.
 
 Then, in the Amazon Connect console: claim a number (or enable web calling), import
 `connect/CareLine-Outbound.json`, and attach the `CareLineCheckIn` Lex bot and the
@@ -188,4 +211,5 @@ _TBD (handle to be confirmed by organizers)_.
 ## Teardown
 
 After judging: release the phone number, delete the Connect instance and the Knowledge
-Base, and run `cdk destroy --all`.
+Base, and run `cdk destroy --all` (this also deletes the map API key, which expires
+Oct 31 regardless).
