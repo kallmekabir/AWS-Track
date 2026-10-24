@@ -38,7 +38,7 @@ cd backend && BEDROCK_MODEL_ID=us.amazon.nova-lite-v1:0 .venv/bin/python ../eval
 ## Cases
 
 `cases.yaml`: 24 cases. Each has 5 `answers` (replies to the 5 questions in
-`lambdas/lex_hook.py` QUESTIONS), `device_group`, `backup_hours_each`, `drive_minutes`,
+`app/script.py` QUESTIONS), `device_group`, `backup_hours_each`, `drive_minutes`,
 and the `expected` rule id. An optional `facts` field lets `--offline` skip Bedrock.
 Case `rk10` uses `rules.no_answer_decision(2)` (no Bedrock).
 

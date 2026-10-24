@@ -34,7 +34,7 @@ import yaml  # noqa: E402
 
 from app.understand import Facts, Extraction, extract_facts  # noqa: E402
 from app import rules as rules_mod  # noqa: E402
-from lambdas.lex_hook import is_emergency, QUESTIONS  # noqa: E402
+from app.script import is_emergency, QUESTIONS  # noqa: E402
 
 CASES_FILE = Path(__file__).resolve().parent / "cases.yaml"
 REPORT_FILE = Path(__file__).resolve().parent / "report.json"
