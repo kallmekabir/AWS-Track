@@ -1,12 +1,16 @@
-"""The demo roster: made-up residents, plus teammates' phones from seed.local.json.
+"""The demo roster: made-up residents, plus teammates' real phones.
 
 The roster matches the worked example in docs/RANKING.md. Teammates play the four
-group 1 personas (Daniel, Ruth, Maria, Linh). Put their real numbers, with their OK,
-in backend/seed.local.json, which git ignores:
+group 1 personas (Daniel, Ruth, Maria, Linh). Each teammate stores their own number,
+with their OK, in Parameter Store (see app/phones.py):
+
+    /carecall/phones/daniel-kim     +14085551234      (SecureString)
+
+Fallback for offline work: backend/seed.local.json, which git ignores:
 
     [{"name": "Daniel Kim", "phone": "+14085551234"}, ...]
 
-Each entry gives that persona the phone and allow_call=True.
+Each number gives that persona the phone and allow_call=True.
 
 Write the roster to the store (DynamoDB when RESIDENTS_TABLE is set in backend/.env):
 
@@ -17,7 +21,8 @@ import os
 import sys
 from pathlib import Path
 
-from app.models import Resident, ResidentIn
+from app import phones as phone_store
+from app.models import Resident, ResidentIn, mask_phone
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 LOCAL_SEED_PATH = Path(os.getenv("SEED_LOCAL_PATH", BACKEND_DIR / "seed.local.json"))
@@ -65,9 +70,21 @@ def load_local_phones(path: Path = LOCAL_SEED_PATH) -> dict[str, str]:
     return phones
 
 
+def load_ssm_phones() -> dict[str, str]:
+    """Parameter Store numbers as {persona name: teammate phone}."""
+    by_slug = {phone_store.slug(r.name): r.name for r in ROSTER}
+    phones = {}
+    for key, phone in phone_store.load().items():
+        if key not in by_slug:
+            raise ValueError(f"Parameter '{key}' is not a persona; use one of {', '.join(sorted(by_slug))}")
+        phones[by_slug[key]] = phone
+    return phones
+
+
 def seed_residents(path: Path = LOCAL_SEED_PATH) -> list[Resident]:
-    """The roster with ids r-001, r-002, ... in order, teammates' phones applied."""
-    phones = load_local_phones(path)
+    """The roster with ids r-001, r-002, ... in order, teammates' phones applied
+    (Parameter Store wins over seed.local.json)."""
+    phones = {**load_local_phones(path), **load_ssm_phones()}
     residents = []
     for i, row in enumerate(ROSTER, start=1):
         data = row.model_dump()
@@ -92,10 +109,11 @@ def main() -> int:
         return 1
     for resident in residents:
         store.save_resident(resident)
-    callable_phones = [r.phone for r in residents if r.allow_call]
     where = os.getenv("RESIDENTS_TABLE") or "memory (RESIDENTS_TABLE not set, nothing was saved)"
-    print(f"Seeded {len(residents)} residents into {where}; {len(callable_phones)} may be called.")
-    print(f"DIALER_ALLOW_LIST={','.join(callable_phones)}")
+    print(f"Seeded {len(residents)} residents into {where}.")
+    for r in residents:
+        if r.allow_call:  # masked: full numbers are never printed
+            print(f"  callable: {r.name} {mask_phone(r.phone)}")
     return 0
 
 

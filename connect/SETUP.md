@@ -65,7 +65,8 @@ Answer the prompts:
 | ConnectContactFlowId | **leave empty for now** (the flow doesn't exist yet) |
 | ConnectSourceNumber | the claimed `+1…` number |
 | ConnectQueueId | leave empty |
-| DialerAllowList | the 4 teammates' numbers, comma-separated, e.g. `+14085551234,+14085555678,…` |
+| PhonesSsmPath | keep `/carecall/phones` |
+| DialerAllowList | **leave empty**: teammates' numbers come from Parameter Store (step 6) |
 | AllowedOrigins | keep `http://localhost:5173` (add the Amplify URL later) |
 | MaxLines / NoAnswerSeconds | keep the defaults (4 / 120) |
 | "ApiFunction has no authentication. Is this okay?" | `y` (demo only; see the note below) |
@@ -73,7 +74,7 @@ Answer the prompts:
 
 The last lines print the **Outputs**: `ApiUrl`, `LexHookFunctionName`, `ResidentsTableName` and `CheckinsTableName`. Keep them.
 
-> **Why "no authentication" is acceptable here:** the API can only ring numbers in `DialerAllowList`, and every phone response is masked. Anyone who finds the URL could still ring the 4 of you or reset the demo, so don't show the URL on screen during the video. A shared key on write requests is in NEXT_STEPS.
+> **Why "no authentication" is acceptable here:** the API can only ring teammates' numbers stored in Parameter Store, and every phone response is masked. Anyone who finds the URL could still ring the 4 of you or reset the demo, so don't show the URL on screen during the video. A shared key on write requests is in NEXT_STEPS.
 
 **Done when:** `curl <ApiUrl>/health` returns `{"ok":true,...}`.
 
@@ -130,13 +131,16 @@ Press Enter to keep every saved answer, and paste the flow ID at **ConnectContac
 ## 6. Put the demo residents in DynamoDB
 
 1. `cp backend/.env.example backend/.env`, then fill in `RESIDENTS_TABLE` and `CHECKINS_TABLE` from the outputs, plus the Connect IDs if you want to place calls from your laptop.
-2. `cp backend/seed.local.example.json backend/seed.local.json` and put in the 4 teammates' real numbers. Each teammate plays one persona: Daniel, Ruth, Maria or Linh. This file is git-ignored.
+2. **Each teammate adds their own number** (never paste numbers into chat, Slack, files or Claude). AWS console → **Systems Manager → Parameter Store → Create parameter**:
+   - Name: `/carecall/phones/` + their persona: `daniel-kim`, `ruth-okafor`, `maria-lopez` or `linh-tran`
+   - Tier **Standard** (free), type **SecureString** (encrypted), KMS key `alias/aws/ssm` (default)
+   - Value: their number as `+1XXXXXXXXXX`
 3. Run:
    ```bash
    cd backend && source .venv/bin/activate
    python -m app.seed
    ```
-   It prints `DIALER_ALLOW_LIST=…`. That must be the **same numbers** you gave `DialerAllowList` in step 2; if not, redo step 5 with the printed value.
+   It lists who may be called, with numbers masked (`+1-XXX-XXX-1234`). Numbers from Parameter Store are allowed automatically; restart the backend after anyone adds or changes a number.
 
 **Done when:** `curl "<ApiUrl>/queue?zone=A"` lists 8 people, all "NOT_CALLED".
 
@@ -152,7 +156,7 @@ Press Enter to keep every saved answer, and paste the flow ID at **ConnectContac
 | What you see | Likely cause → fix |
 | --- | --- |
 | `503 Calling is not set up: missing …` | A Connect parameter is empty → redo step 5 |
-| `403 … not on DIALER_ALLOW_LIST` | The seed numbers and `DialerAllowList` differ → step 6.3 |
+| `403 … not in Parameter Store` | The persona has no parameter under `/carecall/phones/`, or the backend started before it was added → step 6.2, then restart |
 | `502 Amazon Connect refused the call: DestinationNotAllowedException` | Outbound calling is off on the instance, or the number's country isn't allowed |
 | Phone rings, question 1 plays, then silence or a hang-up | The `live` alias has no Lambda (step 3.7), the FallbackIntent fulfillment hook is off (3.3), or the bot wasn't rebuilt and versioned after the change. Check the `sam logs` from step 3 |
 | Phones 1–2 work, 3–4 get a fast busy tone or fail | The flow uses TestBotAlias (2-call limit) instead of `live`, or the concurrent-calls quota is under 4 (step 1.4) |

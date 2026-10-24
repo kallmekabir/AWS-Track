@@ -114,7 +114,7 @@ Using Bedrock is the entry ticket for this track, so it must be central and visi
 
 **Rules for `app/calling.py`:**
 
-- **Refuse to call anyone whose `allow_call` is false, or whose number is not in `DIALER_ALLOW_LIST`.** No exceptions. This keeps us to consenting teammates only. An empty allow-list means no real calls at all.
+- **Refuse to call anyone whose `allow_call` is false, or whose number is not a teammate's number in Parameter Store (`PHONES_SSM_PATH`, see `app/phones.py`) or on `DIALER_ALLOW_LIST`.** No exceptions. This keeps us to consenting teammates only. An empty allow-list means no real calls at all.
 - Never have more than `MAX_LINES` calls marked `CALLING` at once. Status changes go through `store.transition()`, a conditional write, so two Lambdas can never both handle the end of the same call.
 - Save the `ContactId` Connect returns on the resident, with the time the call started.
 - Throttling: the Connect client retries a throttled request once (boto3 standard retry mode, 2 attempts), and a fresh `ClientToken` per call makes that retry safe (never two calls).
@@ -192,7 +192,8 @@ CONNECT_INSTANCE_ID=
 CONNECT_CONTACT_FLOW_ID=
 CONNECT_SOURCE_NUMBER=              # the claimed +1 number; it's the caller ID
 CONNECT_QUEUE_ID=                   # only if CONNECT_SOURCE_NUMBER is empty
-DIALER_ALLOW_LIST=                  # teammates' numbers, comma-separated (python -m app.seed prints it)
+PHONES_SSM_PATH=/carecall/phones    # teammates' numbers: one SecureString per persona, e.g. .../daniel-kim
+DIALER_ALLOW_LIST=                  # optional extra allowed numbers; prefer Parameter Store
 CONNECT_DRY_RUN=                    # 1 = fake calls
 MAX_LINES=4
 NO_ANSWER_SECONDS=120
@@ -212,7 +213,8 @@ backend/
   app/main.py          FastAPI routes (the api Lambda: handler app.main.handler)
   app/models.py        Pydantic data shapes
   app/store.py         Storage: DynamoDB when RESIDENTS_TABLE is set, else in memory (same functions)
-  app/seed.py          Demo roster + teammates' phones from seed.local.json (git-ignored)
+  app/seed.py          Demo roster + teammates' phones (Parameter Store, or git-ignored seed.local.json)
+  app/phones.py        Reads teammates' numbers from Parameter Store; never prints them
   app/calling.py       Amazon Connect: 4 calls at a time, dial_next(), check_calls()
   app/understand.py    Bedrock: transcript → facts                              (Phase 2)
   app/ranking.py       Round 1 (done) and round 2 (Phase 2) rules, no AWS calls inside

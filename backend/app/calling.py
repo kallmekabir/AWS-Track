@@ -4,8 +4,9 @@ Connect places a real phone call from one API call (StartOutboundVoiceContact) a
 runs our contact flow, which hands the caller to the Lex bot. We pass residentId as a
 contact attribute so lex_hook knows who is on the line.
 
-Safety: a call starts only if the resident has allow_call=True AND their number is in
-DIALER_ALLOW_LIST. With an empty allow-list, no real call ever goes out.
+Safety: a call starts only if the resident has allow_call=True AND their number is a
+teammate's number from Parameter Store (app/phones.py) or on DIALER_ALLOW_LIST. With
+neither set, no real call ever goes out.
 
 CONNECT_DRY_RUN=1 skips Connect and returns fake contact IDs, so the dashboard can be
 built without ringing anyone.
@@ -21,7 +22,7 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
-from app import store
+from app import phones, store
 from app.models import Resident, Status
 from app.ranking import round1_order
 
@@ -88,8 +89,8 @@ def refusal(resident: Resident) -> Optional[str]:
     """Why this resident may not be called, or None if they may."""
     if not resident.allow_call:
         return "has not agreed to be called (allow_call is false)"
-    if not DRY_RUN and resident.phone not in ALLOW_LIST:
-        return "number is not on DIALER_ALLOW_LIST"
+    if not DRY_RUN and resident.phone not in ALLOW_LIST | set(phones.load().values()):
+        return "number is not in Parameter Store (PHONES_SSM_PATH) or on DIALER_ALLOW_LIST"
     return None
 
 

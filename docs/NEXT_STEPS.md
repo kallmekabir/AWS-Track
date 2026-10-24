@@ -52,7 +52,7 @@ Docs: [StartOutboundVoiceContact](https://docs.aws.amazon.com/connect/latest/API
   - *Status:* console work. `connect/SETUP.md` steps 1–5 build the real check-in flow directly; the claimed number goes in `CONNECT_SOURCE_NUMBER`, so no queue setup is needed. Test with `POST /residents/r-001/call` instead of the CLI.
 - [ ] **2. Teammates as residents.** Add the 4 teammates (with their OK) with `allow_call: true`. Keep their real numbers in a git-ignored file such as `backend/seed.local.json`, never in git.
   - *Done when:* `GET /residents` shows 4 callable teammates and the made-up residents.
-  - *Status:* code ready. `app/seed.py` gives teammates' numbers from `backend/seed.local.json` to the personas Daniel, Ruth, Maria and Linh; run `python -m app.seed` (SETUP.md step 6).
+  - *Status:* code ready. `app/seed.py` gives teammates' numbers from Parameter Store (`/carecall/phones/<persona>`, SecureString; each teammate adds their own) to the personas Daniel, Ruth, Maria and Linh; run `python -m app.seed` (SETUP.md step 6).
 - [ ] **3. `app/calling.py`: 4 calls at once.** Write `start_call(resident)` and `dial_wave(zone)`. `dial_wave` orders the zone with round 1 (`docs/RANKING.md`), takes the first `MAX_LINES`, and starts each call. Refuse anyone without `allow_call`. Save the returned `ContactId` and start time on the resident. Make `POST /outages` call `dial_wave`.
   - *Done when:* clicking `POST /outages` in `/docs` makes all 4 phones ring together.
   - *Status:* code ready. `app/calling.py` starts the 4 calls in parallel, also refuses numbers missing from `DIALER_ALLOW_LIST`, and the dashboard's **Start outage** button calls it.
@@ -148,6 +148,7 @@ Add a line whenever we decide something, so nobody has to ask twice.
 | Oct 23 | Lex bot uses a published version + `live` alias | TestBotAlias allows only 2 voice calls at once; we need 4 |
 | Oct 23 | Ended calls: Connect `DescribeContact` on each dashboard poll, plus a `NO_ANSWER_SECONDS` timer | Exact hang-up detection without adding EventBridge contact events |
 | Oct 23 | Calls need `allow_call` **and** a number on `DIALER_ALLOW_LIST`; API responses mask phones | A typo or a public URL can never ring a stranger or leak teammates' numbers |
+| Oct 23 | Teammates' numbers live in Parameter Store (SecureString, `/carecall/phones/<persona>`), entered by each teammate; they count as allow-listed | Numbers never go into chat, files, git or Claude; one source for personas and the allow-list |
 | Oct 23 | Teammates play the personas Daniel, Ruth, Maria, Linh | The dashboard then matches the worked example in `docs/RANKING.md` |
 | Oct 23 | Emergency detection uses phrases, not the bare word "help" | Question 5 invites "help with groceries" |
 | Oct 23 | `StartOutboundVoiceContact` IAM permission uses `Resource: "*"` | The action has no resource-level permissions (AWS service reference); `DescribeContact` is scoped to our instance |

@@ -22,11 +22,15 @@ Parameters:
     Type: String
     Default: ""
     Description: Only if ConnectSourceNumber is empty - a queue whose outbound caller ID is set
+  PhonesSsmPath:
+    Type: String
+    Default: /carecall/phones
+    Description: Parameter Store folder with teammates' numbers (SecureString, one per persona). Only these numbers are called
   DialerAllowList:
     Type: String
     NoEcho: true
     Default: ""
-    Description: Comma-separated E.164 numbers of consenting teammates. No other number is ever called
+    Description: Optional extra allowed numbers, comma-separated. Prefer Parameter Store (PhonesSsmPath)
   AllowedOrigins:
     Type: String
     Default: http://localhost:5173
@@ -56,6 +60,7 @@ Globals:
         CONNECT_CONTACT_FLOW_ID: !Ref ConnectContactFlowId
         CONNECT_SOURCE_NUMBER: !Ref ConnectSourceNumber
         CONNECT_QUEUE_ID: !Ref ConnectQueueId
+        PHONES_SSM_PATH: !Ref PhonesSsmPath
         DIALER_ALLOW_LIST: !Ref DialerAllowList
         ALLOWED_ORIGINS: !Ref AllowedOrigins
         MAX_LINES: !Ref MaxLines
@@ -119,6 +124,10 @@ Resources:
             - Effect: Allow
               Action: connect:DescribeContact
               Resource: !Sub arn:${AWS::Partition}:connect:${AWS::Region}:${AWS::AccountId}:instance/${ConnectInstanceId}/contact/*
+            # Teammates' numbers (SecureString, decrypted with the AWS managed aws/ssm key).
+            - Effect: Allow
+              Action: ssm:GetParametersByPath
+              Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${PhonesSsmPath}
       Events:
         AllRoutes:
           Type: HttpApi
@@ -152,6 +161,10 @@ Resources:
             - Effect: Allow
               Action: connect:DescribeContact
               Resource: !Sub arn:${AWS::Partition}:connect:${AWS::Region}:${AWS::AccountId}:instance/${ConnectInstanceId}/contact/*
+            # Teammates' numbers (SecureString, decrypted with the AWS managed aws/ssm key).
+            - Effect: Allow
+              Action: ssm:GetParametersByPath
+              Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${PhonesSsmPath}
 
   LexHookLogs:
     Type: AWS::Logs::LogGroup
