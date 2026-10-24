@@ -28,4 +28,3 @@ EMERGENCY_PHRASES = (
 def is_emergency(said: str) -> bool:
     text = said.lower().replace("’", "'")
     return any(phrase in text for phrase in EMERGENCY_PHRASES)
-
