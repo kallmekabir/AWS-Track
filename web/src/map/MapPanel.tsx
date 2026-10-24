@@ -7,12 +7,13 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 // MapLibre 6 loads its worker from a file next to its own module; Vite's dep
 // pre-bundling moves that module, so point it at the worker explicitly.
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
-import type { Hospital, Resident } from '../api'
+import { getHospitalRoute, type Hospital, type HospitalRoute, type Resident } from '../api'
 import { config } from '../config'
 import { LEVEL_LABEL, LEVEL_ORDER } from '../lib/levels'
+import { clock, span } from '../lib/time'
 import { useSelection } from '../state/selection'
 import { Glyph } from '../ui/Glyph'
-import { addLayers, hospitalFeatures, residentFeatures, residentsSource } from './layers'
+import { EMPTY, addLayers, hospitalFeatures, residentFeatures, residentsSource } from './layers'
 import { drawImage } from './pins'
 import './MapPanel.css'
 
@@ -44,6 +45,7 @@ export function MapPanel({ rows, hospitals, hospitalError, drawerOpen, onUnavail
   onUnavailableRef.current = onUnavailable
   const [ready, setReady] = useState(false)
   const [drawerInset, setDrawerInset] = useState(0)
+  const [route, setRoute] = useState<{ key: string; data?: HospitalRoute; error?: string } | null>(null)
 
   // How much of the map the details panel covers on the right, so the camera and
   // the badge stay in the part Jane can see.
@@ -148,9 +150,58 @@ export function MapPanel({ rows, hospitals, hospitalError, drawerOpen, onUnavail
     })
   }, [ready, selectedLngLat])
 
+  // Primitive dependencies keep queue polling from requesting or refitting a route.
+  const routeKey = selectedPos ? JSON.stringify([
+    selectedPos.id, selectedPos.lng, selectedPos.lat, selectedPos.nearest_hospital_id,
+  ]) : null
+  useEffect(() => {
+    if (!ready) return
+    const map = mapRef.current!
+    const source = map.getSource('hospital-route') as maplibregl.GeoJSONSource
+    source.setData(EMPTY)
+    if (!routeKey) return
+    const [id, lng, lat] = JSON.parse(routeKey) as [string, number, number]
+    const controller = new AbortController()
+    getHospitalRoute(id, controller.signal).then((data) => {
+      if (controller.signal.aborted) return
+      source.setData({ type: 'Feature', properties: {}, geometry: data.geometry })
+      setRoute({ key: routeKey, data })
+      const bounds = new maplibregl.LngLatBounds()
+      data.geometry.coordinates.forEach((pos) => bounds.extend(pos))
+      bounds.extend([data.hospital.lng, data.hospital.lat])
+      bounds.extend([lng, lat])
+      map.fitBounds(bounds, {
+        padding: { top: 120, bottom: 70, left: 40, right: 40 + measureInset() },
+        maxZoom: 15, duration: 700,
+      })
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted) {
+        setRoute({ key: routeKey, error: error instanceof Error ? error.message : 'Hospital route unavailable' })
+      }
+    })
+    return () => {
+      controller.abort()
+    }
+  }, [ready, routeKey])
+
+  const currentRoute = route?.key === routeKey ? route : null
+
   return (
     <section className="panel map-panel" ref={panelRef} aria-label="Map of residents and hospitals">
       <div className="map-canvas" ref={canvasRef} />
+
+      {routeKey && (
+        <div className="map-route" style={{ right: drawerInset + 12 }} role="status" aria-live="polite">
+          {currentRoute?.data ? (
+            <>
+              <strong>{span(currentRoute.data.drive_minutes)} drive to {currentRoute.data.hospital.name}</strong>
+              <span>{currentRoute.data.distance_km.toFixed(1)} km · Traffic as of {clock(currentRoute.data.computed_at)}</span>
+            </>
+          ) : currentRoute?.error ? (
+            <span>Hospital route unavailable: {currentRoute.error}</span>
+          ) : <span>Finding hospital route…</span>}
+        </div>
+      )}
 
       {/* With the details open, the strip of map left is too narrow; the details name the level in words. */}
       {!drawerOpen && (

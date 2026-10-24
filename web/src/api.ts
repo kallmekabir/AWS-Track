@@ -32,6 +32,16 @@ export interface Hospital {
   lng: number
 }
 
+export interface HospitalRoute {
+  resident_id: string
+  hospital: Hospital
+  drive_minutes: number
+  distance_km: number
+  basis: 'live_traffic'
+  computed_at: string
+  geometry: { type: 'LineString'; coordinates: [number, number][] }
+}
+
 // Mirrors ResidentOut in backend/app/models.py. The phone arrives masked.
 export interface Resident {
   id: string
@@ -101,6 +111,10 @@ export const getResidents = (zone = 'A') =>
   MOCK ? mock.getResidents(zone) : request<Resident[]>(`/residents${zoneQuery(zone)}`)
 export const getResident = (id: string) => (MOCK ? mock.getResident(id) : request<Resident>(`/residents/${id}`))
 export const getHospitals = () => MOCK ? mock.getHospitals() : request<Hospital[]>('/hospitals')
+export async function getHospitalRoute(id: string, signal?: AbortSignal): Promise<HospitalRoute> {
+  if (MOCK) throw new Error('Hospital routes need the live backend. Open the dashboard without mock mode.')
+  return request<HospitalRoute>(`/residents/${encodeURIComponent(id)}/hospital-route`, { signal })
+}
 
 // POST / PATCH requests: change data
 export const startOutage = (zone = 'A') =>

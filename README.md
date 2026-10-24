@@ -179,7 +179,7 @@ show hospital pins and name/address popups. Mock mode uses the same checked-in C
 Set `LOCATION_ENABLED=1` in the backend environment and restart the API to enable
 Amazon Location calculations. The default is `0`, preserving the offline demo.
 Use the existing backend AWS access with `geo-places:Geocode` and
-`geo-routes:CalculateRouteMatrix` permissions; the browser map configuration stays
+`geo-routes:CalculateRouteMatrix` and `geo-routes:CalculateRoutes` permissions; the browser map configuration stays
 the same. These are the current `geo-places` and `geo-routes` APIs, so no place index
 or route calculator resource is needed. Install the current runtime requirements
 if the local boto3 installation does not recognize those service names.
@@ -201,6 +201,17 @@ cached by address, coordinates, region and hospital dataset. Polling the dashboa
 never calls the routing API. `DepartNow=true` calculates a traffic snapshot; it is
 not a continuously updated arrival estimate. Refresh before a new outage or when
 traffic changes materially.
+
+Selecting a resident in the list or on the map calls
+`GET /residents/{id}/hospital-route`. The backend uses the existing nearest-hospital
+selection (calculating it on demand if missing), then requests a resident-to-hospital
+driving route from Amazon Location with traffic and simple line geometry. The map
+draws the road route and shows the hospital, drive time, distance and calculation
+time. Successful routes are cached in API process memory for 15 minutes; address,
+coordinate, hospital dataset or selected hospital changes invalidate the cache.
+These trips do not overwrite the hospital-to-resident delivery estimates used for
+ranking. Queue polling does not fetch routes. Mock mode reports that routes require
+the live backend.
 
 `POST /residents` accepts an address without `lat` and `lng`; the backend geocodes
 it and saves the resulting position. Supplied coordinate pairs bypass geocoding.

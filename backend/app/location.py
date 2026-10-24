@@ -1,25 +1,31 @@
 """Amazon Location geocoding and cached hospital-to-resident drive times.
 
 CSV coordinates are already geocoded. All AWS positions are [longitude, latitude].
-No AWS clients or calls are made at import time or by dashboard GET requests.
+No AWS clients or calls are made at import time or by dashboard polling requests.
 """
 import csv
 import hashlib
 import json
 import math
 import os
+import time
+from collections import OrderedDict
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
+from threading import Lock
 
 import boto3
 from botocore.config import Config
 from pydantic import ValidationError
 
-from app.models import Hospital, Resident, ResidentIn
+from app.models import Hospital, HospitalRoute, Resident, ResidentIn, RouteGeometry
 
 DEFAULT_HOSPITALS_CSV = Path(__file__).resolve().parents[2] / "data" / "Hospital_clean.csv"
 LOCATION_FIELDS = ("drive_minutes", "nearest_hospital_id", "location_cache_key", "location_updated_at")
+ROUTE_CACHE_SECONDS = 15 * 60
+_route_cache: OrderedDict[tuple, tuple[float, HospitalRoute]] = OrderedDict()
+_route_cache_lock = Lock()
 
 
 class LocationError(ValueError):
@@ -153,3 +159,55 @@ def drive_times(residents: list[ResidentIn], *, force: bool = False) -> list[dic
                           location_cache_key=keys[i] if minutes is not None else None,
                           location_updated_at=now)
     return results
+
+
+def hospital_route(resident: Resident) -> HospitalRoute:
+    """Draw the drive to the stored nearest hospital; resolve it if not yet known.
+
+    This resident-to-hospital trip is separate from the cached delivery estimate
+    used for ranking. Selection never writes over that hospital-to-resident time.
+    """
+    require_enabled()
+    hospitals = load_hospitals()
+    key = (resident.id, _cache_key(resident, hospitals), resident.nearest_hospital_id)
+    with _route_cache_lock:
+        cached = _route_cache.get(key)
+        if cached and time.monotonic() - cached[0] < ROUTE_CACHE_SECONDS:
+            return cached[1]
+
+    hospital = next((h for h in hospitals if h.id == resident.nearest_hospital_id), None)
+    if hospital is None:
+        nearest_id = drive_times([resident])[0]["nearest_hospital_id"]
+        hospital = next((h for h in hospitals if h.id == nearest_id), None)
+    if hospital is None:
+        raise LocationError("No reachable hospital route is available for this resident")
+
+    response = _client("geo-routes", _region()).calculate_routes(
+        Origin=[resident.lng, resident.lat], Destination=[hospital.lng, hospital.lat],
+        TravelMode="Car", DepartNow=True, Traffic={"Usage": "UseTrafficData"},
+        LegGeometryFormat="Simple")
+    routes = response.get("Routes", [])
+    if not routes:
+        raise LocationError("No driving route to this hospital is available")
+    route = routes[0]
+    coordinates = []
+    for leg in route.get("Legs", []):
+        line = leg.get("Geometry", {}).get("LineString", [])
+        if len(line) < 2:
+            raise LocationError("Amazon Location returned incomplete route geometry")
+        coordinates.extend(line[1:] if coordinates and coordinates[-1] == line[0] else line)
+    try:
+        result = HospitalRoute(
+            resident_id=resident.id, hospital=hospital,
+            drive_minutes=route["Summary"]["Duration"] / 60,
+            distance_km=route["Summary"]["Distance"] / 1000,
+            computed_at=datetime.now(timezone.utc),
+            geometry=RouteGeometry(coordinates=coordinates))
+    except (KeyError, TypeError, ValidationError):
+        raise LocationError("Amazon Location returned an incomplete route") from None
+    with _route_cache_lock:
+        _route_cache[key] = (time.monotonic(), result)
+        _route_cache.move_to_end(key)
+        while len(_route_cache) > 128:
+            _route_cache.popitem(last=False)
+    return result

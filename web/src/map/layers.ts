@@ -11,6 +11,18 @@ export const EMPTY: FeatureCollection = { type: 'FeatureCollection', features: [
 const NUMBERED = 10
 
 export function addLayers(map: MapLibreMap) {
+  // Routes sit below both hospital circles and resident pins.
+  map.addSource('hospital-route', { type: 'geojson', data: EMPTY })
+  map.addLayer({
+    id: 'hospital-route-casing', type: 'line', source: 'hospital-route',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#fff', 'line-width': 9 },
+  })
+  map.addLayer({
+    id: 'hospital-route-line', type: 'line', source: 'hospital-route',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#286791', 'line-width': 5 },
+  })
   map.addSource('hospitals', { type: 'geojson', data: EMPTY })
   map.addLayer({
     id: 'hospitals', type: 'circle', source: 'hospitals',

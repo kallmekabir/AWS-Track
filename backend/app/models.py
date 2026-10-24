@@ -6,7 +6,7 @@ error before your code runs.
 """
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -41,6 +41,11 @@ class Answer(BaseModel):
     q: int = Field(ge=1, le=5)
     question: str
     answer: str
+
+
+class RouteGeometry(BaseModel):
+    type: Literal["LineString"] = "LineString"
+    coordinates: list[tuple[float, float]] = Field(min_length=2)
 
 
 class ResidentIn(BaseModel):
@@ -155,3 +160,13 @@ class Hospital(BaseModel):
     address: str = Field(min_length=1)
     lat: float = Field(ge=-90, le=90)
     lng: float = Field(ge=-180, le=180)
+
+
+class HospitalRoute(BaseModel):
+    resident_id: str
+    hospital: Hospital
+    drive_minutes: float = Field(ge=0, allow_inf_nan=False)
+    distance_km: float = Field(ge=0, allow_inf_nan=False)
+    basis: Literal["live_traffic"] = "live_traffic"
+    computed_at: datetime
+    geometry: RouteGeometry

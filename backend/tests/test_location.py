@@ -16,7 +16,18 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app import location, main, seed, store
-from app.models import Resident, ResidentIn, ResidentPatch, Status
+from app.models import HospitalRoute, Resident, ResidentIn, ResidentPatch, Status
+
+
+def route_response():
+    return {
+        'LegGeometryFormat': 'Simple', 'Notices': [], 'PricingBucket': 'Core',
+        'Routes': [{
+            'MajorRoadLabels': [], 'Summary': {'Duration': 450, 'Distance': 3500},
+            'Legs': [{'Type': 'Vehicle', 'TravelMode': 'Car', 'Geometry': {
+                'LineString': [[-121.9, 37.3], [-121.92, 37.31]]}},
+                {'Type': 'Vehicle', 'TravelMode': 'Car', 'Geometry': {
+                    'LineString': [[-121.92, 37.31], [-121.938534, 37.316157]]}}]}]}
 
 
 class LocationTest(unittest.TestCase):
@@ -27,6 +38,8 @@ class LocationTest(unittest.TestCase):
         self.addCleanup(self.env.stop)
         self.hospitals = location.load_hospitals()
         self.resident = Resident(id='r-001', **seed.ROSTER[0].model_dump())
+        location._route_cache.clear()
+        self.addCleanup(location._route_cache.clear)
         self.routes = mock.Mock()
         self.places = mock.Mock()
         self.client = mock.patch.object(location, '_client', side_effect=lambda service, region:
@@ -148,6 +161,83 @@ class LocationTest(unittest.TestCase):
         with self.assertRaises(location.LocationError):
             location.drive_times([self.resident])
 
+    def test_hospital_route_uses_stored_hospital_and_converts_geometry_and_units(self):
+        self.routes.calculate_routes.return_value = route_response()
+        resident = self.resident.model_copy(update={'nearest_hospital_id': 's-002', 'drive_minutes': 12})
+        result = location.hospital_route(resident)
+        self.assertEqual(result.hospital.id, 's-002')
+        self.assertEqual(result.drive_minutes, 7.5)
+        self.assertEqual(result.distance_km, 3.5)
+        self.assertEqual(result.basis, 'live_traffic')
+        self.assertEqual(len(result.geometry.coordinates), 3)
+        self.assertEqual(result.geometry.coordinates[0], (-121.9, 37.3))
+        self.assertEqual(resident.drive_minutes, 12)
+        self.routes.calculate_route_matrix.assert_not_called()
+        self.routes.calculate_routes.assert_called_once_with(
+            Origin=[resident.lng, resident.lat],
+            Destination=[self.hospitals[1].lng, self.hospitals[1].lat],
+            TravelMode='Car', DepartNow=True, Traffic={'Usage': 'UseTrafficData'},
+            LegGeometryFormat='Simple')
+
+    def test_hospital_route_resolves_missing_or_removed_hospital_using_existing_matrix(self):
+        self.matrix([[600], [120], [300], [400], [500], [600]])
+        self.routes.calculate_routes.return_value = route_response()
+        for hospital_id in [None, 'removed-hospital']:
+            with self.subTest(hospital_id=hospital_id):
+                result = location.hospital_route(self.resident.model_copy(update={
+                    'nearest_hospital_id': hospital_id}))
+                self.assertEqual(result.hospital.id, 's-002')
+        self.assertEqual(self.routes.calculate_route_matrix.call_count, 2)
+
+    def test_hospital_route_cache_reused_expires_and_invalidates_when_locations_change(self):
+        self.matrix([[120]] * 6)
+        self.routes.calculate_routes.return_value = route_response()
+        with mock.patch.object(location.time, 'monotonic', return_value=100):
+            first = location.hospital_route(self.resident)
+            self.assertEqual(location.hospital_route(self.resident), first)
+        self.assertEqual(self.routes.calculate_route_matrix.call_count, 1)
+        self.assertEqual(self.routes.calculate_routes.call_count, 1)
+        with mock.patch.object(location.time, 'monotonic', return_value=100 + location.ROUTE_CACHE_SECONDS):
+            location.hospital_route(self.resident)
+        location.hospital_route(self.resident.model_copy(update={'lng': -121.8}))
+        location.hospital_route(self.resident.model_copy(update={'nearest_hospital_id': 's-002'}))
+        changed = [h.model_copy() for h in self.hospitals]
+        changed[0].lng += .01
+        with mock.patch.object(location, 'load_hospitals', return_value=changed):
+            location.hospital_route(self.resident)
+        self.assertEqual(self.routes.calculate_routes.call_count, 5)
+
+    def test_hospital_route_rejects_unreachable_and_incomplete_routes_without_caching(self):
+        self.matrix([[None]] * 6)
+        with self.assertRaises(location.LocationError):
+            location.hospital_route(self.resident)
+        self.routes.calculate_routes.assert_not_called()
+        resident = self.resident.model_copy(update={'nearest_hospital_id': 's-002'})
+        malformed = [
+            {'Routes': []},
+            {'Routes': [{'Legs': []}]},
+            {'Routes': [{'Legs': [{'Geometry': {}}]}]},
+            {'Routes': [{**route_response()['Routes'][0], 'Summary': {'Duration': -1, 'Distance': 1}}]},
+        ]
+        for response in malformed:
+            with self.subTest(response=response), self.assertRaises(location.LocationError):
+                self.routes.calculate_routes.return_value = response
+                location.hospital_route(resident)
+        self.assertFalse(location._route_cache)
+
+    def test_real_sdk_validates_hospital_route_request_and_response(self):
+        routes = boto3.client('geo-routes', region_name='us-east-1', config=Config(signature_version=UNSIGNED))
+        self.addCleanup(routes.close)
+        resident = self.resident.model_copy(update={'nearest_hospital_id': 's-002'})
+        with Stubber(routes) as routing, mock.patch.object(location, '_client', return_value=routes):
+            routing.add_response('calculate_routes', route_response(), {
+                'Origin': [resident.lng, resident.lat],
+                'Destination': [self.hospitals[1].lng, self.hospitals[1].lat],
+                'TravelMode': 'Car', 'DepartNow': True,
+                'Traffic': {'Usage': 'UseTrafficData'}, 'LegGeometryFormat': 'Simple'})
+            self.assertEqual(location.hospital_route(resident).drive_minutes, 7.5)
+            routing.assert_no_pending_responses()
+
 
 class LocationApiTest(unittest.TestCase):
     def setUp(self):
@@ -192,6 +282,34 @@ class LocationApiTest(unittest.TestCase):
         self.assertEqual(response['nearest_hospital_id'], 's-002')
         self.assertIsInstance(response['location_updated_at'], str)
         self.assertIn('XXX', response['phone'])
+
+    def test_http_hospital_route_serializes_hospital_and_geojson(self):
+        result = HospitalRoute(
+            resident_id='r-001', hospital=location.load_hospitals()[1],
+            drive_minutes=7.5, distance_km=3.5, computed_at=datetime.now(timezone.utc),
+            geometry={'type': 'LineString', 'coordinates': [[-121.9, 37.3], [-121.94, 37.32]]})
+        with mock.patch.object(location, 'hospital_route', return_value=result) as route:
+            status, response = self.http('GET', '/residents/r-001/hospital-route')
+        self.assertEqual(status, 200)
+        self.assertEqual(response['hospital']['id'], 's-002')
+        self.assertEqual(response['geometry']['type'], 'LineString')
+        self.assertEqual(response['geometry']['coordinates'][0], [-121.9, 37.3])
+        self.assertEqual(response['drive_minutes'], 7.5)
+        self.assertIsInstance(response['computed_at'], str)
+        self.assertEqual(route.call_args.args[0].id, 'r-001')
+
+    def test_http_hospital_route_reports_missing_disabled_unreachable_and_aws_errors(self):
+        with mock.patch.object(location, 'hospital_route') as route:
+            self.assertEqual(self.http('GET', '/residents/missing/hospital-route')[0], 404)
+            route.assert_not_called()
+        with mock.patch.dict('os.environ', {'LOCATION_ENABLED': '0'}):
+            self.assertEqual(self.http('GET', '/residents/r-001/hospital-route')[0], 503)
+        failure = ClientError({'Error': {'Code': 'AccessDeniedException', 'Message': 'test'}}, 'CalculateRoutes')
+        for error, expected in [(location.LocationError('No driving route available'), 422), (failure, 502)]:
+            with self.subTest(error=error), mock.patch.object(location, 'hospital_route', side_effect=error):
+                status, response = self.http('GET', '/residents/r-001/hospital-route')
+                self.assertEqual(status, expected)
+                self.assertIn('detail', response)
 
     def test_http_invalid_coordinate_pair_returns_serializable_validation_error(self):
         status, response = self.http('PATCH', '/residents/r-001', {'lat': None, 'lng': -121})

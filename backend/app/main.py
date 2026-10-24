@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 
 from app import calling, location, store
-from app.models import (CheckInIn, Hospital, OutageIn, Resident, ResidentIn, ResidentOut,
+from app.models import (CheckInIn, Hospital, HospitalRoute, OutageIn, Resident, ResidentIn, ResidentOut,
                         ResidentPatch)
 
 _log = logging.getLogger(__name__)
@@ -125,6 +125,13 @@ def list_residents(zone: Optional[str] = None):
 @app.get("/residents/{resident_id}", response_model=ResidentOut)
 def get_resident(resident_id: str):
     return _out(_found(store.get_resident(resident_id)))
+
+
+@app.get("/residents/{resident_id}/hospital-route", response_model=HospitalRoute)
+def get_hospital_route(resident_id: str):
+    resident = _found(store.get_resident(resident_id))
+    with _location_errors():
+        return location.hospital_route(resident)
 
 
 @app.post("/residents", response_model=ResidentOut, status_code=201)
