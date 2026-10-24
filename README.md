@@ -12,7 +12,117 @@ Sparthill hackathon, October 2026.
 
 > **Status:** in active development during the hackathon. Sections marked *planned*
 > describe the design in [`docs/careline-plan.md`](docs/careline-plan.md) and will be
-> filled in as the build lands.
+> filled in as the build lands. **What works today:** the backend phones teammates
+> through Amazon Connect when you click **Start outage**. See
+> [Run the backend](#run-the-backend-works-today).
+
+---
+
+## Run the backend (works today)
+
+The backend (`backend/`, Python) places the phone calls; the dashboard (`web/`) has the
+**Start outage** button. Both run on your laptop. (The hackathon AWS account can't deploy
+Lambda functions, so we don't deploy the backend there.)
+
+### One-time setup
+
+**1. Sign in to AWS** (the hackathon account, region us-east-1):
+
+```bash
+aws login --region us-east-1 --profile carecall
+```
+
+This lasts 12 hours. Run it again whenever you see `ExpiredToken`.
+
+**2. Install the Python packages:**
+
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+```
+
+**3. Create your settings file:**
+
+```bash
+cp .env.example .env
+```
+
+Open `backend/.env` and fill in the three Amazon Connect values: `CONNECT_INSTANCE_ID`,
+`CONNECT_CONTACT_FLOW_ID` and `CONNECT_SOURCE_NUMBER`. They're IDs, not secrets, but they
+stay out of git: ask in the team chat or copy them from the Amazon Connect console.
+`.env` is git-ignored.
+
+**4. Add your phone number to AWS Parameter Store.** Never paste phone numbers into chat,
+files, Slack or an AI assistant. In the AWS console (region **N. Virginia**), search
+**Parameter Store** → **Create parameter**:
+
+| Field | Value |
+| --- | --- |
+| Name | `/carecall/phones/` + the persona you play (below) |
+| Tier | Standard |
+| Type | **SecureString** (keep the default key `alias/aws/ssm`) |
+| Value | your number as `+1XXXXXXXXXX` (no spaces or dashes) |
+
+Each teammate plays one made-up resident, so no real names are stored anywhere:
+
+| Persona | Parameter name |
+| --- | --- |
+| Daniel Kim | `/carecall/phones/daniel-kim` |
+| Ruth Okafor | `/carecall/phones/ruth-okafor` |
+| Maria Lopez | `/carecall/phones/maria-lopez` |
+| Linh Tran | `/carecall/phones/linh-tran` |
+
+Only numbers stored here are ever called.
+
+### Every time
+
+**Terminal 1, the backend:**
+
+```bash
+cd backend
+source .venv/bin/activate
+uvicorn app.main:app --reload --env-file .env
+```
+
+Wait for `Application startup complete`. Check http://localhost:8000/health: it should
+show `"calls_dry_run":false`. Keep this terminal open.
+
+**Terminal 2, the dashboard:**
+
+```bash
+cd web
+npm install        # first time only
+npm run dev
+```
+
+Open http://localhost:5173 and click **Start outage**. Every teammate with a number in
+Parameter Store gets a call, all at the same time.
+
+**Useful commands** (in a third terminal):
+
+```bash
+curl -X POST localhost:8000/residents/r-001/call       # call just Daniel Kim's phone
+curl -X POST "localhost:8000/demo/reset?zone=A"        # everyone back to "Not called yet"
+```
+
+Stop with `Ctrl+C` in each terminal. After anyone adds or changes a number in Parameter
+Store, restart terminal 1.
+
+### If something goes wrong
+
+| You see | Fix |
+| --- | --- |
+| Dashboard: "Can't reach the CareCall API" | Terminal 1 isn't running. Start it |
+| `ExpiredToken` or a credentials error | Run `aws login --region us-east-1 --profile carecall`, then restart terminal 1 |
+| `403 … not in Parameter Store` | That persona has no number yet, or terminal 1 started before it was added. Add it, restart terminal 1 |
+| `503 Calling is not set up` | A Connect value is missing in `backend/.env` (step 3) |
+| `uvicorn: command not found` | Run `source .venv/bin/activate` first |
+| You get a second call after hanging up | Expected for now: the test call script doesn't collect answers, so the backend retries once. Reset with the command above |
+
+More detail: [`connect/SETUP.md`](connect/SETUP.md) (full AWS setup) and
+[`docs/NEXT_STEPS.md`](docs/NEXT_STEPS.md) (what's done and next).
 
 ---
 
@@ -160,12 +270,16 @@ scripts/               seed.py, build_geo_data.py (planned)
 infra/                 CDK stacks (planned)
 lambdas/               dialer, lex_hook, triage, copilot, api, geo, shared layer (planned)
 eval/                  scenarios and harness (planned)
-connect/               exported Connect contact flow (planned)
+backend/               Python backend that places the calls (works today, see "Run the backend")
+connect/SETUP.md       Amazon Connect, Lex and deploy setup steps
 kb/                    Knowledge Base source documents (planned)
-web/                   React + Vite operator dashboard (planned)
+web/                   React + Vite operator dashboard (Start outage + live list today)
 ```
 
 ## Getting started (planned)
+
+> To run what works today, use [Run the backend](#run-the-backend-works-today) above.
+> The steps below are the planned full CDK deployment.
 
 Prerequisites: an AWS account in **us-east-1** with Amazon Connect and Bedrock model
 access, Python 3.12, Node 20, AWS CDK v2, and Kiro.
