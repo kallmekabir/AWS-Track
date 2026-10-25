@@ -2,291 +2,103 @@
 
 **When the power goes out, CareLine phones the people who can't wait.**
 
-CareLine is an AWS voice agent that calls residents who depend on powered medical
-equipment during an outage, turns what they say into facts with **Amazon Bedrock**, and
-ranks them with plain written rules so a duty officer sees **who runs out first**. Four
-phones ring at once; the answers land on one screen, highest risk on top, each with the
-rule and the facts behind it.
+During a power outage, people who rely on powered medical equipment (oxygen, ventilators,
+dialysis) can run out of time fast. CareLine calls them automatically, asks five short
+questions, and shows a duty officer one ranked list: **who needs help first**.
 
-Built for the **AI-Driven Automation & Critical Service Continuity** track at the
-Sparthill hackathon, October 2026. English only.
+Built for the AI-Driven Automation & Critical Service Continuity track at the Sparthill
+hackathon, October 2026.
 
----
+## How it works
 
-## What it does (for judges)
+1. A duty officer clicks **Start outage** on the dashboard.
+2. CareLine calls up to 4 residents at once with **Amazon Connect**.
+3. Each resident answers 5 questions on their keypad: are you safe, is your device
+   working, how many backups, how many hours left, and what do you need.
+4. **Amazon Bedrock** turns the answers into facts. Plain written rules (not the AI)
+   decide each person's level: *Help now*, *Help soon*, *A person must check*,
+   *Needs supplies*, or *OK for now*.
+5. **Amazon Location** adds the drive time to the nearest hospital, so the people with the
+   least time to spare go to the top of the list.
 
-1. **Jane, the duty officer, starts an outage** for a zone (one button).
-2. **CareLine phones up to 4 residents at once** through Amazon Connect, highest medical
-   risk first.
-3. **Residents answer 5 short questions** — are you safe, is the device working, how many
-   backups, how many hours left, what else do you need. Answers come in by **keypad**
-   today (natural-speech via Amazon Contact Lens is built and is the next step — see
-   [Call paths](#call-paths)).
-4. **Amazon Bedrock (Nova Lite) extracts facts** from the answers — one Converse call with
-   a forced `record_checkin` tool at temperature 0, validated against
-   [`schemas/checkin.json`](schemas/checkin.json). Bedrock only extracts; it never decides
-   the level.
-5. **Plain Python rules (R0–R6, NA) decide the triage level.** The first rule that matches
-   wins and its ID is saved.
-6. **Amazon Location** gives each resident the drive time from the nearest hospital
-   (`data/Hospital_clean.csv`), which feeds **time to spare** = hours left − drive time.
-7. **One dashboard** shows the ranked list (least time to spare first inside each level),
-   a map of residents and hospitals, and a drawer with the resident's answers, **Bedrock's
-   facts**, the deciding rule, and the countdown.
+All resident data is made up, and only teammates who agreed to it get real calls.
 
-The pipeline is live, not a mock: a real call → Bedrock facts → rules → DynamoDB → the
-dashboard. The eval runs 24 English cases through the same extraction and rule code; the
-last live run scored **24/24, 0 missed urgent**.
+## Run it on your computer
 
-## Triage rules
+You need **Git**, **Node.js 22+**, and **Python 3.11+**.
 
-The first matching rule wins; its ID is saved with the result (`docs/RANKING.md` is the
-spec, `backend/app/rules.py` the code).
-
-| Rule | Condition | Level |
-| --- | --- | --- |
-| R0 | Said it's an emergency, or said they're not safe | **Help now** |
-| R1 | Device off and no backups left | **Help now** |
-| R2 | Time to spare under 1 hour (hours left − hospital drive) | **Help now** |
-| R3 | One backup left, or under 4 hours left | **Help soon** |
-| R4 | Answers unclear (`confidence < 0.7`, or hours unknown for an oxygen/ventilator user) | **A person must check** |
-| R5 | Needs supplies (medicine, food, a ride, charging, oxygen) | **Needs supplies** |
-| R6 | Enough supply for now | **OK for now** (recheck scheduled) |
-| NA | No answer after 2 calls | **Help soon** + welfare check |
-
-Inside a level, the person with the **least time to spare** is first (unknown counts as 0,
-so it rises to the top), then device group, then id.
-
-## What Bedrock extracts
-
-One forced-tool Converse call returns exactly this (see `schemas/checkin.json` and
-`backend/app/understand.py`):
-
-```json
-{"safe":"yes|no|unsure","device_working":"yes|no|unsure","backup_left":"int|null",
- "hours_left":"number|null","needs":["medicine","food","transport","charging","oxygen_delivery"],
- "emergency":true,"confidence":0.0}
-```
-
-If Bedrock fails or returns an odd field, that field becomes `unsure`/`null` with low
-confidence, so rule **R4** sends the resident to a person. The model never picks a level.
-
-## Call paths
-
-The workshop account cannot build a **Lex** bot: `CreateBot` needs `iam:PassRole` on the
-Lex service-linked role, and the role policy denies it (proven on the API; see
-`connect/SETUP.md`). It also cannot create **Lambda** execution roles, so the whole system
-runs as one FastAPI process on EC2, not Lambdas.
-
-Two Lex-free call paths write the same contact data that `app/call_results.py` reads:
-
-- **Keypad (live demo path).** A DTMF contact flow (`connect/build_keypad_flow.py`) maps
-  each key to readable text in contact attributes `a1..a5` (e.g. `a4 = "2 hours"`), plus
-  `answered` and `intent`.
-- **Natural speech via Amazon Contact Lens (built, next step).** A flow
-  (`connect/build_speech_flow.py`) turns on Contact Lens real-time analytics, which records
-  and transcribes the caller; `call_results.contact_lens_segments()` reads the CUSTOMER
-  turns. Built and unit-tested; not yet verified end to end on a live call, so keypad is
-  the path used for the demo.
-
-Either way: **Connect → (keypad attributes | Contact Lens segments) → `app/call_results.py`
-→ Bedrock extract → rules → DynamoDB → dashboard.**
-
-## Architecture
-
-```mermaid
-flowchart TD
-  dash["React dashboard (S3)"] -->|"/api"| cf["CloudFront (basic auth)"]
-  cf -->|"strip /api"| api["EC2: FastAPI / uvicorn :8000"]
-  api <-->|"residents + check-ins"| ddb[("DynamoDB")]
-  api -->|"StartOutboundVoiceContact"| connect["Amazon Connect"]
-  connect <--> phone["Consenting teammate's phone"]
-  connect -->|"keypad attrs / Contact Lens segments"| attrs["Contact attributes + CL transcript"]
-  api -->|"DescribeContact, then read answers"| attrs
-  api --> results["call_results: transcript, Bedrock, rules, save, dial_next"]
-  results -->|"extract facts (Nova Lite)"| bedrock["Amazon Bedrock"]
-  api -->|"hospital drive time"| loc["Amazon Location"]
-  dash --> maps["Amazon Location map tiles"]
-```
-
-| Service | Job |
-| --- | --- |
-| Amazon Connect | Real outbound calls and the fixed call script; keypad or Contact Lens answers |
-| Amazon Contact Lens | Records and transcribes the caller for the natural-speech path |
-| Amazon Bedrock (Nova Lite) | Converse + forced `record_checkin` tool turns answers into facts |
-| Amazon Location | Geocoding + hospital-to-resident drive time (`geo-places`, `geo-routes`), map tiles |
-| Amazon EC2 | The long-lived FastAPI API, dialer and background call checker (one uvicorn worker) |
-| Amazon CloudFront | Dashboard hosting, basic auth, and `/api` proxy to port 8000 |
-| Amazon S3 | Dashboard static files; Bedrock model-invocation logs |
-| Amazon DynamoDB | Residents and check-ins (`careline-residents`, `careline-checkins`) |
-
-**No Lex, no Lambda, no Step Functions, no Knowledge Bases, no copilot** — the workshop
-account blocks the IAM roles those need. Rules, not a model, decide every level.
-
-## Responsible AI and privacy
-
-- **The model extracts, rules decide.** Bedrock never marks anyone safe; `app/rules.py`
-  does, and the rule ID is saved with every result.
-- **Unclear goes to a person.** Low confidence or missing facts for an oxygen/ventilator
-  user → rule R4, a human review.
-- **PII removed before Bedrock.** `app/understand.py` redacts phone numbers and emails from
-  the transcript before it is sent to Bedrock or stored.
-- **Consenting teammates only.** The dialer refuses any number not on the allow-list
-  (`PHONES_SSM_PATH` in Parameter Store or `DIALER_ALLOW_LIST`); an empty list means no
-  real calls. All resident data is synthetic.
-- **The call script only asks questions**; it never gives medical advice. A Bedrock
-  guardrail is configured to block medical-advice content.
-- **Contact Lens records audio** on the speech path, to transcribe it. Recording is off on
-  the keypad path.
-
-## Evaluation
+### 1. Clone the repo
 
 ```bash
-cd backend && BEDROCK_MODEL_ID=us.amazon.nova-lite-v1:0 .venv/bin/python ../eval/run.py
-python ../eval/run.py --offline     # rules only, no AWS
+git clone https://github.com/kallmekabir/AWS-Track.git
+cd AWS-Track
 ```
 
-24 English cases run through the real `extract_facts` + `rank_after_call`. Headline metric:
-**missed "Help now" cases, target 0.** Last live run: 24/24 exact, 0 missed. Writes
-`eval/report.json`.
-
----
-
-## Run it yourself
-
-The backend (`backend/`, FastAPI) places the calls and ranks the answers; the dashboard
-(`web/`, React + Vite) shows the ranked list and map. Both run locally; the live demo is
-hosted on EC2 behind CloudFront.
-
-### Setup
+### 2. Try the dashboard (no AWS, no backend)
 
 ```bash
-aws login --region us-east-1 --profile carecall   # lasts ~12 h; rerun on ExpiredToken
-cd backend && ./setup.sh                            # venv, deps, backend/.env + web/.env.local from your sign-in
+cd web
+npm install
+npm run dev
 ```
 
-`setup.sh` picks the keypad call script (`CareCall check-in keypad`), turns on Bedrock
-(`BEDROCK_MODEL_ID`) and hospital routes (`LOCATION_ENABLED=1`), and saves the map key in
-`web/.env.local`. Rerun it after pulling if calls ring twice or the map is missing.
+Open **http://localhost:5173/?mock** and click **Start outage**. The dashboard uses
+built-in sample data, so nothing else is needed.
 
-Add your phone to Parameter Store (never paste numbers into chat or files): create a
-**SecureString** `/carecall/phones/<persona>` (e.g. `ruth-okafor`) with your number as
-`+1XXXXXXXXXX`. Only numbers stored here are ever called. Personas: `daniel-kim`,
-`ruth-okafor`, `maria-lopez`, `linh-tran`.
+### 3. Run the backend too (still no AWS)
 
-### Run
+Open a second terminal in the `AWS-Track` folder:
 
 ```bash
-# Terminal 1 — backend
-cd backend && source .venv/bin/activate && uvicorn app.main:app --reload --env-file .env
-# Terminal 2 — dashboard
-cd web && npm install && npm run dev        # http://localhost:5173
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+echo "CONNECT_DRY_RUN=1" > .env    # fake calls: no phone rings, no AWS needed
+uvicorn app.main:app --reload --env-file .env
 ```
 
-The map only loads at `http://localhost:5173`. If Vite picks another port, close what is
-using 5173 and restart it.
+Now open **http://localhost:5173** (without `?mock`). The dashboard reads from the backend at
+`http://localhost:8000`.
 
-### Test a call (your phone only)
-
-1. Backend and dashboard running, dashboard open.
-2. Ring only your persona (`r-001` Daniel, `r-002` Ruth, `r-003` Maria, `r-004` Linh), or
-   press **Call again** on your row after the first call:
-   ```bash
-   curl -X POST localhost:8000/residents/r-001/call
-   ```
-3. Answer with the keypad. Wait for each question to finish before pressing.
-   Q1 safe? 1 yes, 2 no · Q2 device working? 1 yes, 2 no, 3 not sure · Q3 full backups 0-5 ·
-   Q4 hours until you run out 0-9 · Q5 need: 1 nothing, 2 ride, 3 oxygen, 4 charging,
-   5 food, 6 medicine.
-4. A few seconds after you hang up, your row shows a level and reason; **What they said**
-   shows the answers.
-
-| Test | Keys Q1-Q5 | Expected |
-| --- | --- | --- |
-| Not safe | 2, then anything | Help now: "Said they're not safe" |
-| Device off, no backups | 1, 2, 0, 0, 1 | Help now: "Device off, no backups left" |
-| Running low | 1, 1, 2, 2, 1 | Help soon |
-| Needs supplies | 1, 1, 3, 8, 5 | Needs supplies: "Needs food" |
-| All fine | 1, 1, 3, 8, 1 | OK for now: "Enough supply" |
-| No answer | don't pick up | After `NO_ANSWER_SECONDS` it rings once more, then Help soon: "No answer (2 tries)" |
-
-**Start outage** rings every teammate with a number in Parameter Store; warn the team
-first. To test without ringing anyone, set `CONNECT_DRY_RUN=1` in `backend/.env` and
-restart (fake answers arrive after 5 seconds).
-
-### Seed residents
+The sample residents start as "do not call". To watch a fake outage, allow them, then
+click **Start outage**:
 
 ```bash
-python -m app.seed --demo        # 8-person teammate roster (matches docs/RANKING.md); phones can ring
-python -m app.seed               # synthetic CSV residents (data/Residents_simple.csv); nobody callable
-# flags: --dry-run (validate only), --with-location (compute hospital drives; needs LOCATION_ENABLED=1)
+for i in 1 2 3 4 5 6 7 8; do
+  curl -s -X PATCH localhost:8000/residents/r-00$i \
+    -H 'content-type: application/json' -d '{"allow_call":true}' > /dev/null
+done
 ```
 
-### Hospital drive times (Amazon Location)
+Fake answers arrive after about 5 seconds. Without Bedrock, most people land in
+**A person must check**. That's on purpose: when the facts are unclear, a human decides.
 
-Set `LOCATION_ENABLED=1` and restart. `data/Hospital_clean.csv` holds the hospitals;
-`calculate_route_matrix` finds each resident's shortest hospital drive. `POST
-/locations/refresh?zone=A` backfills an existing registry. With Location off, the `--demo`
-roster still has fixed demo drive times so the worked example is reproducible. Location
-calls are billable; see [pricing](https://aws.amazon.com/location/pricing/).
-
-### Offline check (no AWS)
+### 4. Run the tests
 
 ```bash
-cd backend && python -m unittest discover -s tests -t .
+cd backend
+python -m unittest discover -s tests -t .
 ```
 
-### Hosting
+### Real phone calls (AWS account needed)
 
-One uvicorn worker on EC2 reads `/etc/careline/backend.env` (keys from
-`backend/.env.example`). CloudFront serves `https://<cloudfront>/api/...`, strips `/api`,
-and forwards to port 8000. Build the dashboard with
-`VITE_API_URL=https://<cloudfront>/api`. Never commit `.env` or `web/.env.local`.
-The hosted site asks for a username and password (HTTP Basic Auth); ask Himanshu for them.
+Real calls need an AWS account with Amazon Connect, Bedrock, and Location set up. Follow
+[`connect/SETUP.md`](connect/SETUP.md), then run `backend/setup.sh`, which fills in
+`backend/.env` from your AWS sign-in.
 
-### If something goes wrong
+## Built with
 
-| You see | Fix |
-| --- | --- |
-| "Can't reach the CareCall API" | Backend (terminal 1) isn't running |
-| `ExpiredToken` | `aws login --region us-east-1 --profile carecall`, restart the backend |
-| `403 … not in Parameter Store` | That persona has no stored number, or the backend started before it was added |
-| `503 Calling is not set up` | A Connect value is missing in `backend/.env`; rerun `./setup.sh` |
-| Phone rings twice, no answers saved | Old test call script; rerun `./setup.sh` and restart the backend |
-| Map is missing | No `VITE_LOCATION_API_KEY` in `web/.env.local` (rerun `./setup.sh`), or the dashboard isn't on port 5173 |
-| Answers saved but "A person must check" | `BEDROCK_MODEL_ID` is empty; rerun `./setup.sh` |
+Amazon Connect · Amazon Bedrock (Nova Lite) · Amazon Location · Amazon DynamoDB ·
+Amazon EC2 · Amazon CloudFront · FastAPI (Python) · React + Vite (TypeScript)
 
-## Repository layout
+## Project layout
 
 ```
-backend/app/        FastAPI API, dialer, store, Bedrock extraction (understand.py),
-                    rules.py, ranking.py, location.py, script.py, call_results.py
-backend/tests/      unittest tests with fake Connect / Bedrock / Contact Lens clients
-connect/            build_keypad_flow.py, build_speech_flow.py, SETUP.md
-eval/               run.py, cases.yaml, report.json (24 English cases)
-web/                React + Vite dashboard: priority list, map, resident drawer
-data/               Hospital_clean.csv, Residents_simple.csv
-schemas/checkin.json  The exact JSON Bedrock must return
-docs/RANKING.md     Ranking spec (code must match it)
-docs/NEXT_STEPS.md  What's proven and what's left
-docs/reference/     Historical broader designs; not the current build
-lambdas/, kb/       Historical placeholders; no runtime (the build uses no Lambda or KB)
+backend/   FastAPI app: calling, Bedrock extraction, triage rules, ranking
+web/       React dashboard: ranked list, map, resident details
+connect/   Amazon Connect call flows and setup guide
+eval/      24 test cases for the extraction and rules
+data/      Hospitals and sample residents
+docs/      Ranking spec (docs/RANKING.md) and project notes
 ```
-
-## Team
-
-| Role | Name |
-| --- | --- |
-| Voice + Connect flows | _TODO: fill in_ |
-| Orchestration + Bedrock + rules | _TODO: fill in_ |
-| Dashboard | _TODO: fill in_ |
-| Data, evaluation, location | _TODO: fill in_ |
-
-Questions from judges: reach us through the event's channel _(TODO: handle)_.
-
-## Teardown
-
-After judging: release the phone number, delete the Connect instance (and its flows and
-the Bedrock guardrail), stop the EC2 service, remove the CloudFront distribution and S3
-buckets, and delete the DynamoDB tables. `scripts/teardown.sh` does the infra-owned part
-(it leaves the Connect instance to a human). See `docs/infra/HANDOFF.md`.
