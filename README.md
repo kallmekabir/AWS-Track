@@ -158,6 +158,16 @@ The backend (`backend/`, FastAPI) places the calls and ranks the answers; the da
 (`web/`, React + Vite) shows the ranked list and map. Both run locally; the live demo is
 hosted on EC2 behind CloudFront.
 
+### Clone
+
+```bash
+git clone https://github.com/kallmekabir/AWS-Track.git
+cd AWS-Track
+```
+
+You need Git, Node.js 22+, Python 3.11+ and the AWS CLI, plus a sign-in to the team's
+AWS account (us-east-1) with the Connect instance from `connect/SETUP.md`.
+
 ### Setup
 
 ```bash
@@ -200,93 +210,3 @@ using 5173 and restart it.
    5 food, 6 medicine.
 4. A few seconds after you hang up, your row shows a level and reason; **What they said**
    shows the answers.
-
-| Test | Keys Q1-Q5 | Expected |
-| --- | --- | --- |
-| Not safe | 2, then anything | Help now: "Said they're not safe" |
-| Device off, no backups | 1, 2, 0, 0, 1 | Help now: "Device off, no backups left" |
-| Running low | 1, 1, 2, 2, 1 | Help soon |
-| Needs supplies | 1, 1, 3, 8, 5 | Needs supplies: "Needs food" |
-| All fine | 1, 1, 3, 8, 1 | OK for now: "Enough supply" |
-| No answer | don't pick up | After `NO_ANSWER_SECONDS` it rings once more, then Help soon: "No answer (2 tries)" |
-
-**Start outage** rings every teammate with a number in Parameter Store; warn the team
-first. To test without ringing anyone, set `CONNECT_DRY_RUN=1` in `backend/.env` and
-restart (fake answers arrive after 5 seconds).
-
-### Seed residents
-
-```bash
-python -m app.seed --demo        # 8-person teammate roster (matches docs/RANKING.md); phones can ring
-python -m app.seed               # synthetic CSV residents (data/Residents_simple.csv); nobody callable
-# flags: --dry-run (validate only), --with-location (compute hospital drives; needs LOCATION_ENABLED=1)
-```
-
-### Hospital drive times (Amazon Location)
-
-Set `LOCATION_ENABLED=1` and restart. `data/Hospital_clean.csv` holds the hospitals;
-`calculate_route_matrix` finds each resident's shortest hospital drive. `POST
-/locations/refresh?zone=A` backfills an existing registry. With Location off, the `--demo`
-roster still has fixed demo drive times so the worked example is reproducible. Location
-calls are billable; see [pricing](https://aws.amazon.com/location/pricing/).
-
-### Offline check (no AWS)
-
-```bash
-cd backend && python -m unittest discover -s tests -t .
-```
-
-### Hosting
-
-One uvicorn worker on EC2 reads `/etc/careline/backend.env` (keys from
-`backend/.env.example`). CloudFront serves `https://<cloudfront>/api/...`, strips `/api`,
-and forwards to port 8000. Build the dashboard with
-`VITE_API_URL=https://<cloudfront>/api`. Never commit `.env` or `web/.env.local`.
-The hosted site asks for a username and password (HTTP Basic Auth); ask Himanshu for them.
-
-### If something goes wrong
-
-| You see | Fix |
-| --- | --- |
-| "Can't reach the CareCall API" | Backend (terminal 1) isn't running |
-| `ExpiredToken` | `aws login --region us-east-1 --profile carecall`, restart the backend |
-| `403 … not in Parameter Store` | That persona has no stored number, or the backend started before it was added |
-| `503 Calling is not set up` | A Connect value is missing in `backend/.env`; rerun `./setup.sh` |
-| Phone rings twice, no answers saved | Old test call script; rerun `./setup.sh` and restart the backend |
-| Map is missing | No `VITE_LOCATION_API_KEY` in `web/.env.local` (rerun `./setup.sh`), or the dashboard isn't on port 5173 |
-| Answers saved but "A person must check" | `BEDROCK_MODEL_ID` is empty; rerun `./setup.sh` |
-
-## Repository layout
-
-```
-backend/app/        FastAPI API, dialer, store, Bedrock extraction (understand.py),
-                    rules.py, ranking.py, location.py, script.py, call_results.py
-backend/tests/      unittest tests with fake Connect / Bedrock / Contact Lens clients
-connect/            build_keypad_flow.py, build_speech_flow.py, SETUP.md
-eval/               run.py, cases.yaml, report.json (24 English cases)
-web/                React + Vite dashboard: priority list, map, resident drawer
-data/               Hospital_clean.csv, Residents_simple.csv
-schemas/checkin.json  The exact JSON Bedrock must return
-docs/RANKING.md     Ranking spec (code must match it)
-docs/NEXT_STEPS.md  What's proven and what's left
-docs/reference/     Historical broader designs; not the current build
-lambdas/, kb/       Historical placeholders; no runtime (the build uses no Lambda or KB)
-```
-
-## Team
-
-| Role | Name |
-| --- | --- |
-| Voice + Connect flows | _TODO: fill in_ |
-| Orchestration + Bedrock + rules | _TODO: fill in_ |
-| Dashboard | _TODO: fill in_ |
-| Data, evaluation, location | _TODO: fill in_ |
-
-Questions from judges: reach us through the event's channel _(TODO: handle)_.
-
-## Teardown
-
-After judging: release the phone number, delete the Connect instance (and its flows and
-the Bedrock guardrail), stop the EC2 service, remove the CloudFront distribution and S3
-buckets, and delete the DynamoDB tables. `scripts/teardown.sh` does the infra-owned part
-(it leaves the Connect instance to a human). See `docs/infra/HANDOFF.md`.
